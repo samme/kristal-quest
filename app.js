@@ -427,7 +427,7 @@ module.exports = {
         ease: 'Sine.easeInOut',
         loop: -1,
         targets: glow,
-        yoyo: true,
+        yoyo: true
       });
     },
 
@@ -489,17 +489,36 @@ module.exports = {
       player.body.setSize(16, 48);
     },
 
+    createSlime: function (slime, i) {
+      slime
+        .setAlpha(0.75)
+        .setBounce(1, 0.2)
+        .setCollideWorldBounds(true)
+        .setDataEnabled()
+        .setData('eyes', eyesGroup.getFirst(false).setActive(true))
+        .setData('i', i)
+        .setMaxVelocity(60, 600)
+        .setName('slime' + i)
+        .setVelocity(60 * this.randomSign(), 0);
+
+      slime.body.checkCollision.up = false;
+      slime.body.setSize(24, 24);
+
+      // Starts the `startClimb` timer
+      this.slimeStopClimb(slime);
+    },
+
     createSlimes: function () {
       slimes = this.physics.add.group({
         key: 'slime',
         repeat: 3,
-        setXY: { x: 100, y: 0, stepX: 200 },
+        setXY: { x: 100, y: 0, stepX: 200 }
       });
 
       eyesGroup = this.add.group({
         classType: Phaser.GameObjects.Image,
         key: 'slimeeyes',
-        repeat: slimes.getLength() - 1,
+        repeat: slimes.getLength() - 1
       });
 
       // This part is awkward.
@@ -533,11 +552,20 @@ module.exports = {
     fadeOutGlow: function () {
       this.tweens.add({
         duration: 1 * SECOND,
-        ease: 'Back.easeIn',
+        ease: 'Back.ease',
         scaleX: 0,
         scaleY: 0,
-        targets: glow,
+        targets: glow
       });
+    },
+
+    gameOver: function (msg) {
+      gameOverText
+        .setText(msg)
+        .setOrigin(0.5)
+        .setVisible(true);
+
+      this.input.once('pointerup', this.quit, this);
     },
 
     isOnFloor: function (sprite) {
@@ -548,23 +576,8 @@ module.exports = {
       return player.active;
     },
 
-    createSlime: function (slime, i) {
-      slime
-        .setAlpha(0.75)
-        .setBounce(1, 0.2)
-        .setCollideWorldBounds(true)
-        .setDataEnabled()
-        .setData('eyes', eyesGroup.getFirst(false).setActive(true))
-        .setData('i', i)
-        .setMaxVelocity(60, 600)
-        .setName('slime' + i)
-        .setVelocity(60 * this.randomSign(), 0);
-
-      slime.body.checkCollision.up = false;
-      slime.body.setSize(24, 24);
-
-      // Starts the `startClimb` timer
-      this.slimeStopClimb(slime);
+    lose: function () {
+      this.gameOver('GAME OVER');
     },
 
     quit: function () {
@@ -576,7 +589,7 @@ module.exports = {
     },
 
     secondsElapsed: function () {
-      console.assert(this.time.now < 1e9, '`time.now` is too large');
+      // console.assert(this.time.now < 1e9, '`time.now` is too large');
 
       return Math.floor((this.time.now - timeStarted) / SECOND);
     },
@@ -667,46 +680,6 @@ module.exports = {
       // TODO
     },
 
-    win: function () {
-      player.anims.play('turn');
-      player.body.checkCollision.none = true;
-
-      player
-        .setAccelerationX(Phaser.Math.Clamp((800 - player.x), -600, 600))
-        .setAccelerationY(-1200)
-        .setCollideWorldBounds(false)
-        .setDrag(600, 0);
-
-      // After `explode`, `frequency` (-1) must be reset (0)
-      starsEmitter
-        .setFrequency(0, 1)
-        .start(); // `flow(0, 1)` would also work.
-
-      var elapsed = this.secondsElapsed();
-
-      this.registry.set('lastTime', elapsed);
-
-      // You would need to suspend/resume the state to save these?
-      // if (elapsed < (this.registry.get('bestTime')) || Infinity) {
-      //   this.registry.set('bestTime', elapsed);
-      // }
-
-      this.gameOver('HOORAY');
-    },
-
-    lose: function () {
-      this.gameOver('GAME OVER');
-    },
-
-    gameOver: function (msg) {
-      gameOverText
-        .setText(msg)
-        .setOrigin(0.5)
-        .setVisible(true);
-
-      this.input.once('pointerup', this.quit, this);
-    },
-
     updateGlow: function () {
       if (!glow.visible || !player.active) {
         return;
@@ -744,11 +717,6 @@ module.exports = {
       }
     },
 
-    updateText: function () {
-      scoreText.setText('*'.repeat(score));
-      timerText.setText(String(this.secondsElapsed())); // 8ae34932965631f8c101a0102f3767d104fac260
-    },
-
     updateSlime: function (slime) {
       var eyes = slime.getData('eyes');
 
@@ -776,9 +744,39 @@ module.exports = {
           );
         }
       }
-
     },
 
+    updateText: function () {
+      scoreText.setText('*'.repeat(score));
+      timerText.setText(String(this.secondsElapsed())); // 8ae34932965631f8c101a0102f3767d104fac260
+    },
+
+    win: function () {
+      player.anims.play('turn');
+      player.body.checkCollision.none = true;
+
+      player
+        .setAccelerationX(Phaser.Math.Clamp((800 - player.x), -600, 600))
+        .setAccelerationY(-1200)
+        .setCollideWorldBounds(false)
+        .setDrag(600, 0);
+
+      // After `explode`, `frequency` (-1) must be reset (0)
+      starsEmitter
+        .setFrequency(0, 1)
+        .start(); // `flow(0, 1)` would also work.
+
+      var elapsed = this.secondsElapsed();
+
+      this.registry.set('lastTime', elapsed);
+
+      // You would need to suspend/resume the state to save these?
+      // if (elapsed < (this.registry.get('bestTime')) || Infinity) {
+      //   this.registry.set('bestTime', elapsed);
+      // }
+
+      this.gameOver('HOORAY');
+    }
   }
 
 };

@@ -24,5 +24,6 @@ Features
 - load progress
 - particles
 - scene switching
+- tiling sprite
 - timer events
 - tweens

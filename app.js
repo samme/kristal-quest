@@ -297,6 +297,7 @@ var playerIsGlowing;
 var playerIsSlimed;
 var score;
 var scoreText;
+var ship;
 var slimes;
 var starsEmitter;
 var timeStarted;
@@ -326,11 +327,12 @@ module.exports = {
     this.add.image(400, 300, 'space1')
       .setScrollFactor(0, 0);
 
+    ship = this.add.image(800, -200, 'ship')
+      .setScrollFactor(1, 0.25);
+
+    // You *could* use `width=800`, `setScrollFactor(0)`, `tilePositionX=` instead.
     this.add.tileSprite(400, 520, 1620, 176, 'mtn')
       .setScrollFactor(0.5);
-
-    this.add.image(800, -200, 'ship')
-      .setScrollFactor(1, 0.25);
 
     this.createPlatforms();
     this.createPineapple();
@@ -351,10 +353,6 @@ module.exports = {
 
     cursors = this.input.keyboard.createCursorKeys();
 
-    if (this.physics.world.drawDebug) {
-      this.input.keyboard.on('keydown_D', this.toggleDebugGraphic, this);
-    }
-
     this.input.keyboard.once('keydown_G', this.startPlayerGlow, this);
     this.input.keyboard.once('keydown_Q', this.quit, this);
     this.input.keyboard.once('keydown_W', this.win, this);
@@ -364,6 +362,7 @@ module.exports = {
 
     if (debugGraphic) {
       debugGraphic.setVisible(false);
+      this.input.keyboard.on('keydown_D', this.toggleDebugGraphic, this);
     }
   },
 
@@ -421,6 +420,7 @@ module.exports = {
         .setBlendMode('ADD')
         .setVisible(false);
 
+      // Probably this should be paused while the glow is invisible.
       this.tweens.add({
         alpha: 0.6,
         duration: 2000,
@@ -482,10 +482,9 @@ module.exports = {
         .setBounce(0.2)
         .setCollideWorldBounds(true)
         .setDragX(600)
-        .setName('player')
-      ;
+        .setMaxVelocity(300, 1200)
+        .setName('player');
 
-      player.body.maxVelocity.x = 300;
       player.body.setSize(16, 48);
     },
 
@@ -552,7 +551,7 @@ module.exports = {
     fadeOutGlow: function () {
       this.tweens.add({
         duration: 1 * SECOND,
-        ease: 'Back.ease',
+        ease: 'Back.easeIn',
         scaleX: 0,
         scaleY: 0,
         targets: glow
@@ -562,7 +561,7 @@ module.exports = {
     gameOver: function (msg) {
       gameOverText
         .setText(msg)
-        .setOrigin(0.5)
+        .setOrigin(0.5) // must be after `setText`
         .setVisible(true);
 
       this.input.once('pointerup', this.quit, this);
@@ -572,12 +571,13 @@ module.exports = {
       return sprite.body.blocked.down || sprite.body.touching.down;
     },
 
+    // Filter for some of the physics colliders
     isPlayerActive: function () {
       return player.active;
     },
 
     lose: function () {
-      this.gameOver('GAME OVER');
+      this.gameOver('GAME OVER'); // :(
     },
 
     quit: function () {
@@ -592,10 +592,6 @@ module.exports = {
       // console.assert(this.time.now < 1e9, '`time.now` is too large');
 
       return Math.floor((this.time.now - timeStarted) / SECOND);
-    },
-
-    shutdown: function () {
-      console.log('shutdown');
     },
 
     slimePlayer: function (_player, slime) {
@@ -662,9 +658,7 @@ module.exports = {
 
     stopPlayerGlow: function () {
       playerIsGlowing = false;
-
       glow.setVisible(false);
-
       player.setTint(WHITE);
     },
 
@@ -722,33 +716,39 @@ module.exports = {
 
       eyes.setPosition(
         Phaser.Math.Linear(slime.x, eyes.x, 0.25),
-        Phaser.Math.Linear(slime.y, eyes.y, 0.25)
+        Phaser.Math.Linear(slime.y, eyes.y, 0.5)
       );
 
       var velocity = slime.body.velocity;
 
-      slime.scaleX = Phaser.Math.Linear(
+      slime.scaleX = Phaser.Math.Linear( // for smoothing
         slime.scaleX,
         1 / (0.75 + Math.abs(velocity.y / 600)),
         0.5
       );
+
+      if (playerIsSlimed) {
+        return;
+      }
 
       if (this.isOnFloor(slime)) {
         if (playerIsGlowing) {
           slime.setAccelerationX(
             15 * Phaser.Math.Clamp(slime.x - player.x, -1, 1)
           );
-        } else if (Phaser.Math.Within(velocity.x, 0, 60)) {
+        } else if (Phaser.Math.Within(velocity.x, 0, 59.999)) {
           slime.setAccelerationX(
-            15 * Phaser.Math.Clamp(velocity.x, -1, 1)
+            15 * Phaser.Math.Clamp((velocity.x || this.randomSign()), -1, 1)
           );
+        } else {
+          slime.setAccelerationX(0);
         }
       }
     },
 
     updateText: function () {
       scoreText.setText('*'.repeat(score));
-      timerText.setText(String(this.secondsElapsed())); // 8ae34932965631f8c101a0102f3767d104fac260
+      timerText.setText(String(this.secondsElapsed())); // <https://github.com/photonstorm/phaser/commit/8ae34932965631f8c101a0102f3767d104fac260>
     },
 
     win: function () {
@@ -756,12 +756,12 @@ module.exports = {
       player.body.checkCollision.none = true;
 
       player
-        .setAccelerationX(Phaser.Math.Clamp((800 - player.x), -600, 600))
+        .setAccelerationX(Phaser.Math.Clamp((ship.x - player.x), -600, 600))
         .setAccelerationY(-1200)
         .setCollideWorldBounds(false)
         .setDrag(600, 0);
 
-      // After `explode`, `frequency` (-1) must be reset (0)
+      // After `explode`, `frequency` (-1) must be reset to 0 (or larger)
       starsEmitter
         .setFrequency(0, 1)
         .start(); // `flow(0, 1)` would also work.
@@ -770,12 +770,12 @@ module.exports = {
 
       this.registry.set('lastTime', elapsed);
 
-      // You would need to suspend/resume the state to save these?
+      // Not really useful since the registry is cleared after `state.stop`.
       // if (elapsed < (this.registry.get('bestTime')) || Infinity) {
       //   this.registry.set('bestTime', elapsed);
       // }
 
-      this.gameOver('HOORAY');
+      this.gameOver('HOORAY'); // :D
     }
   }
 

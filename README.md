@@ -21,6 +21,7 @@ Features
 - arcade physics
 - bitmap text
 - fruit
+- load progress
 - particles
 - scene switching
 - timer events

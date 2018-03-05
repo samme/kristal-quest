@@ -12,6 +12,7 @@ Controls
 
 - cursor keys
 - `D` toggle physics debug
+- `F` start full screen (if available)
 - `Q` quit (to menu)
 
 Features
@@ -21,6 +22,7 @@ Features
 - arcade physics
 - bitmap text
 - fruit
+- game data
 - load progress
 - particles
 - scene switching

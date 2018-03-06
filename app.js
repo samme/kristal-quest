@@ -198,7 +198,7 @@ module.exports = {
   key: 'boot',
 
   preload: function () {
-    console.debug('preload', this.scene.key);
+    console.debug(this.scene.key, 'preload');
     this.load.bitmapFont('smooth', 'atari-smooth.png', 'atari-smooth.xml');
     this.load.bitmapFont('sunset', 'atari-sunset.png', 'atari-sunset.xml');
     this.load.image('diamond');
@@ -222,9 +222,8 @@ module.exports = {
   },
 
   create: function () {
-    console.debug('create', this.scene.key);
+    console.debug(this.scene.key, 'create');
     this.createAnims();
-
     // this.scene.start('default');
     this.scene.start('menu');
   },
@@ -264,13 +263,12 @@ module.exports = {
       this.progressBar = this.add.graphics();
     },
 
-    onLoadComplete: function (loader) {
-      console.debug('onLoadComplete', loader);
+    onLoadComplete: function () {
       this.progressBar.destroy();
     },
 
     onLoadProgress: function (progress) {
-      console.debug('progress', progress);
+      // console.debug('progress', progress);
       var rect = this.progressBarRectangle;
       var color = (this.load.failed.size > 0) ? RED : WHITE;
       this.progressBar
@@ -319,7 +317,7 @@ module.exports = {
   key: 'default',
 
   init: function (data) {
-    console.debug('init', this.scene.key, data);
+    console.debug(this.scene.key, 'init', data);
 
     var canvas = this.sys.game.canvas;
 
@@ -333,10 +331,12 @@ module.exports = {
     // Force an update of `time.now`
     this.time.update(0, 0);
     timeStarted = this.time.now;
+
+    this.events.once('shutdown', this.onShutdown, this);
   },
 
   create: function () {
-    console.debug('create', this.scene.key);
+    console.debug(this.scene.key, 'create');
 
     this.add.image(400, 300, 'space1')
       .setScrollFactor(0, 0);
@@ -623,6 +623,11 @@ module.exports = {
       this.gameOver('GAME OVER'); // :(
     },
 
+    onShutdown: function () {
+      console.debug(this.scene.key, 'onShutdown');
+      this.physics.world.colliders.destroy();
+    },
+
     quit: function () {
       this.scene.start('menu');
     },
@@ -683,7 +688,7 @@ module.exports = {
       if (this.isOnFloor(slime)) {
         slime
           .setAccelerationX(0)
-          .setDragX(20)
+          .setDragX(30)
           .setGravityY(-720);
       }
 
@@ -693,7 +698,6 @@ module.exports = {
 
     slimeStopClimb: function (slime) {
       slime
-        .setAccelerationX(15)
         .setDragX(0)
         .setGravityY(0);
 
@@ -858,7 +862,7 @@ module.exports = {
   key: 'menu',
 
   create: function () {
-    console.debug('create', this.scene.key);
+    console.debug(this.scene.key, 'create');
 
     this.add.image(400, 300, 'space2');
 

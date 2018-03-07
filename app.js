@@ -854,7 +854,7 @@ module.exports = {
       var velocity = slime.body.velocity;
       var absVelocityX = Math.abs(velocity.x);
       var absVelocityY = Math.abs(velocity.y);
-      var accel = maxVelocity / 5;
+      var accel = maxVelocity.x / 5;
 
       slime.scaleX = linear(slime.scaleX, 1 / (0.75 + absVelocityY / 600), 0.5);
 

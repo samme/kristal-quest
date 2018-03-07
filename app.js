@@ -155,7 +155,7 @@ window.game = new Phaser.Game({
   type: Phaser.AUTO,
   title: '💎 Kristal Quest',
   url: 'https://github.com/samme/kristal-quest',
-  version: '0.0.2',
+  version: '0.0.3',
   banner: {
     background: ['#eb4149', '#ebba16', '#42af5c', '#2682b1', '#28434d']
   },
@@ -286,30 +286,14 @@ module.exports = {
 });
 
 require.register("scenes/default.js", function(exports, require, module) {
-var cursors;
-var eyesGroup;
-var gameOverText;
-var gems;
-var glow;
-var level;
-var pineapple;
-var platforms;
-var player;
-var playerIsGlowing;
-var playerIsSlimed;
-var quitText;
-var requestFullscreen;
-var score;
-var scoreText;
-var slimes;
-var starsEmitter;
-var timeStarted;
-var timerText;
-
 var BLUE = 0x0000fa;
+
 var GREEN = 0x00ff00;
+
 var SECOND = 1000;
+
 var SILVER = 0xcccccc;
+
 var YELLOW = 0xffff00;
 
 module.exports = {
@@ -317,22 +301,24 @@ module.exports = {
   key: 'default',
 
   init: function (data) {
-    console.debug(this.scene.key, 'init', data);
-
     var canvas = this.sys.game.canvas;
 
-    level = data.level || 1;
-    playerIsGlowing = false;
-    playerIsSlimed = false;
-    requestFullscreen = canvas.mozRequestFullScreen || canvas.webkitRequestFullscreen || canvas.requestFullscreen;
-    score = 0;
-    timeStarted = null;
+    this.level = data.level || 1;
+    this.playerIsGlowing = false;
+    this.playerIsSlimed = false;
+    this.requestFullscreen = canvas.mozRequestFullScreen || canvas.webkitRequestFullscreen || canvas.requestFullscreen;
+    this.score = 0;
+    this.timeStarted = null;
 
     // Force an update of `time.now`
     this.time.update(0, 0);
-    timeStarted = this.time.now;
+    this.timeStarted = this.time.now;
 
     this.events.once('shutdown', this.onShutdown, this);
+
+    console.debug(this.scene.key, 'init', data);
+    console.debug('level', this.level);
+    console.debug('this.timeStarted', this.timeStarted);
   },
 
   create: function () {
@@ -344,12 +330,16 @@ module.exports = {
     this.add.image(800, -200, 'ship')
       .setScrollFactor(0.25, 0.25);
 
-    // You *could* use `width=800`, `setScrollFactor(0)`, `tilePositionX=` instead.
-    this.add.tileSprite(400, 520, 1620, 176, 'mtn')
-      .setScrollFactor(0.5);
+    this.mtn = this.add.tileSprite(400, 520, 800, 176, 'mtn')
+      .setScrollFactor(0, 0.5);
 
-    var platformsCount = Phaser.Math.Clamp(10 - level, 1, 9);
-    var slimesCount = Phaser.Math.Clamp(2 * level, 2, 20);
+    var levelMod = this.level % 10;
+    var platformsCount = Phaser.Math.Clamp(10 - levelMod, 1, 9);
+    var slimesCount = Phaser.Math.Clamp(levelMod, 1, 10);
+
+    console.debug('levelMod', levelMod);
+    console.debug('platformsCount', platformsCount);
+    console.debug('this.slimesCount', this.slimesCount);
 
     this.createPlatforms(platformsCount);
     this.createPineapple();
@@ -361,17 +351,22 @@ module.exports = {
     this.createParticles();
 
     this.cameras.main.setBounds(0, -1200, 1600, 1800);
-    this.cameras.main.startFollow(player);
+    this.cameras.main.startFollow(this.player);
 
-    this.physics.add.collider([gems, pineapple, player, slimes], platforms);
-    this.physics.add.overlap(player, gems, this.collectGem, this.isPlayerActive, this);
-    this.physics.add.overlap(player, pineapple, this.collectPineapple, this.isPlayerActive, this);
-    this.physics.add.overlap(player, slimes, this.slimePlayer, this.isPlayerActive, this);
+    this.physics.add.collider([this.gems, this.pineapple, this.player, this.slimes], this.platforms);
+    this.physics.add.overlap(this.player, this.gems, this.collectGem, this.isPlayerActive, this);
+    this.physics.add.overlap(this.player, this.pineapple, this.collectPineapple, this.isPlayerActive, this);
+    this.physics.add.overlap(this.player, this.slimes, this.slimePlayer, this.isPlayerActive, this);
 
-    cursors = this.input.keyboard.createCursorKeys();
+    this.cursors = this.input.keyboard.createCursorKeys();
 
     this.input.keyboard.on('keydown_F', this.startFullscreen, this);
     this.input.keyboard.once('keydown_Q', this.quit, this);
+
+    this.input.keyboard.once('keydown_N', function () {
+      this.scene.manager.stop('default');
+      this.scene.manager.start('default', { level: 1 + this.level });
+    }, this);
 
     var debugGraphic = this.physics.world.debugGraphic;
 
@@ -382,16 +377,57 @@ module.exports = {
   },
 
   update: function () {
+    this.updateBackground();
     this.updatePlayer();
     this.updateGlow();
-    slimes.children.iterate(this.updateSlime, this);
+    this.slimes.children.iterate(this.updateSlime, this);
     this.updateText();
   },
 
   extend: {
 
+    cursors: null,
+
+    eyesGroup: null,
+
+    gameOverText: null,
+
+    gems: null,
+
+    glow: null,
+
+    level: null,
+
+    mtn: null,
+
+    pineapple: null,
+
+    platforms: null,
+
+    player: null,
+
+    playerIsGlowing: null,
+
+    playerIsSlimed: null,
+
+    quitText: null,
+
+    requestFullscreen: null,
+
+    score: null,
+
+    scoreText: null,
+
+    slimes: null,
+
+    starsEmitter: null,
+
+    timeStarted: null,
+
+    timerText: null,
+
     checkGems: function () {
-      if (gems.countActive(true) === 0) {
+      if (this.gems.countActive(true) === 0) {
         this.win();
       }
     },
@@ -401,16 +437,16 @@ module.exports = {
       if (obj.target) { obj.target = null; }
     },
 
-    collectGem: function (_player, gem) {
+    collectGem: function (player, gem) {
       gem.disableBody(true, true);
-      starsEmitter.explode(10);
-      score += 1;
+      this.starsEmitter.explode(10);
+      this.score += 1;
       this.updateText();
       this.checkGems();
     },
 
-    collectPineapple: function (_player, _pineapple) {
-      _pineapple.disableBody(true, true);
+    collectPineapple: function (player, pineapple) {
+      pineapple.disableBody(true, true);
       this.startPlayerGlow();
     },
 
@@ -428,16 +464,16 @@ module.exports = {
     },
 
     createGems: function () {
-      gems = this.physics.add.group({
+      this.gems = this.physics.add.group({
         key: 'diamond',
         repeat: 11
       });
 
-      gems.children.iterate(this.createGem, this);
+      this.gems.children.iterate(this.createGem, this);
     },
 
     createGlow: function () {
-      glow = this.add.image(player.x, player.y, 'yellow')
+      this.glow = this.add.image(this.player.x, this.player.y, 'yellow')
         .setAlpha(0.4)
         .setBlendMode('ADD')
         .setVisible(false);
@@ -448,13 +484,13 @@ module.exports = {
         duration: 2000,
         ease: 'Sine.easeInOut',
         loop: -1,
-        targets: glow,
+        targets: this.glow,
         yoyo: true
       });
     },
 
     createParticles: function () {
-      starsEmitter = this.add.particles('star').createEmitter({
+      this.starsEmitter = this.add.particles('star').createEmitter({
         accelerationY: -600,
         alpha: { start: 1, end: 0 },
         blendMode: 'ADD',
@@ -463,35 +499,37 @@ module.exports = {
         speed: 60
       });
 
-      starsEmitter.startFollow(player);
+      this.starsEmitter.startFollow(this.player);
     },
 
     createPineapple: function () {
-      pineapple = this.physics.add.image(400, 300, 'pineapple')
+      this.pineapple = this.physics.add.image(0, 0, 'pineapple')
         .setCollideWorldBounds(true);
+
+      Phaser.Geom.Rectangle.Random(this.physics.world.bounds, this.pineapple);
     },
 
     createPlatforms: function (count) {
-      platforms = this.physics.add.staticGroup({
+      this.platforms = this.physics.add.staticGroup({
         key: 'platform',
         repeat: count - 1
       });
 
-      var between = Phaser.Math.Between;
-
-      Phaser.Actions.GridAlign(platforms.getChildren(), {
+      Phaser.Actions.GridAlign(this.platforms.getChildren(), {
         width: 3,
         height: 3,
         cellWidth: 600,
-        cellHeight: 160,
+        cellHeight: -160, // bottom to top
         position: 6, // CENTER?
         x: 200,
-        y: 150
+        y: 425
       });
 
-      platforms.children.iterate(function (platform) {
-        platform.x += 50 * between(-4, 4);
-        platform.y += 32 * between(-1, 1);
+      this.platforms.children.iterate(function (platform, i) {
+        // platform.x += 100 * between(-2, 2);
+        platform.x += 200 * ((i * count) % 2);
+        // platform.y += 16 * between(-1, 1);
+        platform.y += 32 * ((i * count) % 3);
         platform
           .refreshBody() // Because we moved a static body after creation
           .setTint(BLUE);
@@ -499,16 +537,16 @@ module.exports = {
     },
 
     createPlayer: function () {
-      player = this.physics.add.sprite(800, 600, 'dude');
+      this.player = this.physics.add.sprite(800, 600, 'dude');
 
-      player
+      this.player
         .setBounce(0.2)
         .setCollideWorldBounds(true)
         .setDragX(600)
         .setMaxVelocity(300, 1200)
         .setName('player');
 
-      player.body.setSize(16, 48);
+      this.player.body.setSize(16, 48);
     },
 
     createSlime: function (slime, eyes, i) {
@@ -519,7 +557,7 @@ module.exports = {
         .setDataEnabled()
         .setData('eyes', eyes)
         .setData('i', i)
-        .setMaxVelocity(Phaser.Math.Clamp(50 + 10 * level, 60, 120), 600)
+        .setMaxVelocity(60 * Math.ceil(this.level / 9), 600)
         .setName('slime' + i)
         .setVelocity(60 * this.randomSign(), 0);
 
@@ -531,51 +569,51 @@ module.exports = {
     },
 
     createSlimes: function (count) {
-      slimes = this.physics.add.group({
+      this.slimes = this.physics.add.group({
         key: 'slime',
         repeat: count - 1,
         setXY: { x: 100, y: 0, stepX: 200 }
       });
 
-      eyesGroup = this.add.group({
+      this.eyesGroup = this.add.group({
         classType: Phaser.GameObjects.Image,
         key: 'slimeeyes',
         repeat: count - 1
       });
 
-      var eyes = eyesGroup.getChildren();
+      var eyes = this.eyesGroup.getChildren();
 
-      slimes.children.iterate(function (slime, i) {
+      this.slimes.children.iterate(function (slime, i) {
         this.createSlime(slime, eyes[i], i);
       }, this);
     },
 
     createText: function () {
-      timerText = this.add.bitmapText(0, 5, 'smooth', '9999')
+      this.timerText = this.add.bitmapText(0, 5, 'smooth', '9999')
         .setFontSize(32)
         .setScrollFactor(0, 0);
 
-      scoreText = this.add.bitmapText(150, 5, 'sunset', '')
+      this.scoreText = this.add.bitmapText(125, 5, 'sunset', '')
         .setFontSize(32)
         .setScrollFactor(0, 0);
 
-      gameOverText = this.add.bitmapText(400, 300, 'sunset', '')
+      this.gameOverText = this.add.bitmapText(400, 300, 'sunset', '')
         .setScrollFactor(0, 0)
         .setVisible(false);
 
-      quitText = this.add.bitmapText(400, 450, 'smooth', '[Q] Quit')
+      this.quitText = this.add.bitmapText(400, 450, 'smooth', '[Q] Quit')
         .setFontSize(32)
         .setOrigin(0.5, 0.5)
         .setScrollFactor(0, 0)
         .setTint(SILVER)
         .setVisible(false);
 
-      this.updateText();
-
-      this.add.bitmapText(550, 5, 'smooth', 'LEVEL ' + level)
+      this.add.bitmapText(525, 5, 'smooth', 'LEVEL ' + this.level)
         .setFontSize(32)
         .setScrollFactor(0, 0)
         .setTint(SILVER);
+
+      this.updateText();
     },
 
     fadeOutGlow: function () {
@@ -584,20 +622,20 @@ module.exports = {
         ease: 'Back.easeIn',
         scaleX: 0,
         scaleY: 0,
-        targets: glow
+        targets: this.glow
       });
     },
 
     gameOver: function (msg) {
-      gameOverText
+      this.gameOverText
         .setText(msg)
         .setOrigin(0.5) // must be after `setText`
         .setVisible(true);
 
-      quitText.setVisible(true);
+      this.quitText.setVisible(true);
 
-      scoreText.setActive(false);
-      timerText.setActive(false);
+      this.scoreText.setActive(false);
+      this.timerText.setActive(false);
 
       this.input.once('pointerup', this.quit, this);
     },
@@ -616,7 +654,7 @@ module.exports = {
 
     // Filter for some of the physics colliders
     isPlayerActive: function () {
-      return player.active;
+      return this.player.active;
     },
 
     lose: function () {
@@ -625,6 +663,7 @@ module.exports = {
 
     onShutdown: function () {
       console.debug(this.scene.key, 'onShutdown');
+      this.input.keyboard.removeAllListeners();
       this.physics.world.colliders.destroy();
     },
 
@@ -633,42 +672,50 @@ module.exports = {
     },
 
     randomSign: function () {
-      return Math.random() > 0.5 ? 1 : -1;
+      return Phaser.Math.RND.sign();
     },
 
     savePlayerProgress: function () {
       var elapsed = this.secondsElapsed();
       var registry = this.sys.game.registry;
 
-      registry.set('lastTime', elapsed);
-      registry.set('levelCompleted', level);
+      console.debug('elapsed', elapsed);
 
-      if (elapsed < (registry.get('bestTime')) || Infinity) {
+      registry.set('lastTime', elapsed);
+      registry.set('levelCompleted', this.level);
+
+      var bestTime = registry.get('bestTime');
+
+      console.debug('bestTime', bestTime);
+
+      if (elapsed < (bestTime || Infinity)) {
         registry.set('bestTime', elapsed);
       }
+
+      console.debug('bestTime', registry.get('bestTime'));
     },
 
     secondsElapsed: function () {
       // console.assert(this.time.now < 1e9, '`time.now` is too large');
 
-      return Math.floor((this.time.now - timeStarted) / SECOND);
+      return Math.floor((this.time.now - this.timeStarted) / SECOND);
     },
 
     showGroup: function (group) {
       Phaser.Actions.SetVisible(group.getChildren(), true);
     },
 
-    slimePlayer: function (_player, slime) {
-      if (playerIsGlowing) {
+    slimePlayer: function (player, slime) {
+      if (this.playerIsGlowing) {
         return;
       }
 
-      playerIsSlimed = true;
+      this.playerIsSlimed = true;
 
-      _player.anims.play('turn');
-      _player.body.allowDrag = true;
+      player.anims.play('turn');
+      player.body.allowDrag = true;
 
-      _player
+      player
         .setActive(false)
         .setDrag(1200, 0)
         .setTint(GREEN);
@@ -715,28 +762,28 @@ module.exports = {
         return;
       }
 
-      requestFullscreen.call(this.sys.game.canvas);
+      this.requestFullscreen.call(this.sys.game.canvas);
     },
 
     startPlayerGlow: function () {
-      playerIsGlowing = true;
+      this.playerIsGlowing = true;
 
-      glow
-        .setPosition(player.x, player.y)
+      this.glow
+        .setPosition(this.player.x, this.player.y)
         .setScale(1)
         .setVisible(true);
 
-      player.setTint(YELLOW);
+      this.player.setTint(YELLOW);
 
       this.time.delayedCall(9 * SECOND, this.fadeOutGlow, null, this);
       this.time.delayedCall(10 * SECOND, this.stopPlayerGlow, null, this);
     },
 
     stopPlayerGlow: function () {
-      playerIsGlowing = false;
-      glow.setVisible(false);
-      player.clearTint();
-      player.body.checkCollision.up = true;
+      this.playerIsGlowing = false;
+      this.glow.setVisible(false);
+      this.player.clearTint();
+      this.player.body.checkCollision.up = true;
     },
 
     toggleDebugGraphic: function () {
@@ -744,6 +791,7 @@ module.exports = {
 
       if (debugGraphic) {
         debugGraphic.setVisible(!debugGraphic.visible);
+        console.debug('toggleDebugGraphic', debugGraphic.visible);
       }
     },
 
@@ -751,39 +799,44 @@ module.exports = {
       // TODO
     },
 
+    updateBackground: function () {
+      var main = this.cameras.main;
+      this.mtn.tilePositionX = 0.5 * main.scrollX;
+    },
+
     updateGlow: function () {
-      if (!glow.visible || !player.active) {
+      if (!this.glow.visible || !this.player.active) {
         return;
       }
 
-      glow.x = Phaser.Math.Linear(glow.x, player.x, 0.75);
-      glow.y = Phaser.Math.Linear(glow.y, player.y, 0.75);
+      this.glow.x = Phaser.Math.Linear(this.glow.x, this.player.x, 0.75);
+      this.glow.y = Phaser.Math.Linear(this.glow.y, this.player.y, 0.75);
     },
 
     updatePlayer: function () {
-      if (playerIsSlimed) {
+      if (this.playerIsSlimed) {
         return;
       }
 
-      var onFloor = this.isOnFloor(player);
+      var onFloor = this.isOnFloor(this.player);
 
-      player.body.allowDrag = onFloor;
+      this.player.body.allowDrag = onFloor;
 
       if (onFloor) {
-        if (cursors.left.isDown) {
-          player.body.velocity.x -= 30;
-          player.anims.play('left', true);
-        } else if (cursors.right.isDown) {
-          player.body.velocity.x += 30;
-          player.anims.play('right', true);
+        if (this.cursors.left.isDown) {
+          this.player.body.velocity.x -= 30;
+          this.player.anims.play('left', true);
+        } else if (this.cursors.right.isDown) {
+          this.player.body.velocity.x += 30;
+          this.player.anims.play('right', true);
         }
 
-        if (cursors.up.isDown) {
-          player.setVelocityY(-480);
+        if (this.cursors.up.isDown) {
+          this.player.setVelocityY(-480);
         }
 
-        if (player.body.speed < 10) {
-          player.anims.play('turn');
+        if (this.player.body.speed < 10) {
+          this.player.anims.play('turn');
         }
       }
     },
@@ -799,21 +852,24 @@ module.exports = {
 
       var maxVelocity = slime.body.maxVelocity;
       var velocity = slime.body.velocity;
+      var absVelocityX = Math.abs(velocity.x);
+      var absVelocityY = Math.abs(velocity.y);
+      var accel = maxVelocity / 5;
 
-      slime.scaleX = linear(slime.scaleX, 1 / (0.75 + Math.abs(velocity.y / 600)), 0.5);
+      slime.scaleX = linear(slime.scaleX, 1 / (0.75 + absVelocityY / 600), 0.5);
 
-      if (playerIsSlimed) {
+      if (this.playerIsSlimed) {
         return;
       }
 
       if (this.isOnFloor(slime)) {
-        if (playerIsGlowing) {
+        if (this.playerIsGlowing) {
           slime.setAccelerationX(
-            30 * Phaser.Math.Clamp(slime.x - player.x, -1, 1)
+            2 * accel * Phaser.Math.Clamp(slime.x - this.player.x, -1, 1)
           );
-        } else if (Phaser.Math.Within(velocity.x, 0, maxVelocity.x - 0.001)) {
+        } else if (absVelocityX < maxVelocity.x) {
           slime.setAccelerationX(
-            15 * Phaser.Math.Clamp((velocity.x || this.randomSign()), -1, 1)
+            1 * accel * Phaser.Math.Clamp((velocity.x || this.randomSign()), -1, 1)
           );
         } else {
           slime.setAccelerationX(0);
@@ -822,27 +878,27 @@ module.exports = {
     },
 
     updateText: function () {
-      if (scoreText.active) {
-        scoreText.setText('*'.repeat(score));
+      if (this.scoreText.active) {
+        this.scoreText.setText('*'.repeat(this.score));
       }
 
-      if (timerText.active) {
-        timerText.setText(String(this.secondsElapsed()));
+      if (this.timerText.active) {
+        this.timerText.setText(this.secondsElapsed());
       }
     },
 
     win: function () {
-      player.anims.play('turn');
-      player.body.checkCollision.none = true;
+      this.player.anims.play('turn');
+      this.player.body.checkCollision.none = true;
 
-      player
-        .setAccelerationX(Phaser.Math.Clamp((this.physics.world.bounds.centerX - player.x), -600, 600))
+      this.player
+        .setAccelerationX(Phaser.Math.Clamp((this.physics.world.bounds.centerX - this.player.x), -600, 600))
         .setAccelerationY(-1200)
         .setCollideWorldBounds(false)
         .setDrag(600, 0);
 
       // After `explode`, `frequency` (-1) must be reset to 0 (or larger)
-      starsEmitter
+      this.starsEmitter
         .setFrequency(0, 1)
         .start(); // `flow(0, 1)` would also work.
 
@@ -880,7 +936,11 @@ module.exports = {
     this.level = 1 + (registry.get('levelCompleted') || 0);
 
     this.caption = this.add.bitmapText(400, 550, 'smooth',
-      'Level: ' + this.level + '   Last Time: ' + (lastTime || '-') + '   Best Time: ' + (bestTime || '-'))
+      [
+        ('Level: ' + this.level),
+        (lastTime ? ('Last Time: ' + lastTime) : ''),
+        (bestTime ? ('Best Time: ' + bestTime) : '')
+      ].filter(Boolean).join('  '))
       .setOrigin(0.125, 0.125)
       .setFontSize(16);
 

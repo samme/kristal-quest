@@ -1,4 +1,4 @@
-![The astronaut jumps across platforms chasing crystals and dodging slimes](https://samme.github.io/kristal-quest/cover.png)
+![On a stark alien landscape, an astronaut jumps across platforms chasing crystals and dodging slimes.](https://samme.github.io/kristal-quest/cover.png)
 
 Kristal Quest
 =============
@@ -18,13 +18,16 @@ Controls
 Features
 --------
 
+- 99 levels
 - advanced slime AI
 - arcade physics
 - bitmap text
 - fruit
-- game data
+- game data registry
+- grid alignment
 - load progress
 - particles
+- scene data passing
 - scene switching
 - tiling sprite
 - timer events

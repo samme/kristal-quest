@@ -333,13 +333,13 @@ module.exports = {
     this.mtn = this.add.tileSprite(400, 520, 800, 176, 'mtn')
       .setScrollFactor(0, 0.5);
 
-    var levelMod = this.level % 10;
-    var platformsCount = Phaser.Math.Clamp(10 - levelMod, 1, 9);
-    var slimesCount = Phaser.Math.Clamp(levelMod, 1, 10);
+    var levelPrime = Phaser.Math.Wrap(this.level, 1, 10);
+    var platformsCount = Phaser.Math.Clamp(10 - levelPrime, 1, 9);
+    var slimesCount = Phaser.Math.Snap.Floor(levelPrime, 2);
 
-    console.debug('levelMod', levelMod);
+    console.debug('levelPrime', levelPrime);
     console.debug('platformsCount', platformsCount);
-    console.debug('this.slimesCount', this.slimesCount);
+    console.debug('slimesCount', slimesCount);
 
     this.createPlatforms(platformsCount);
     this.createPineapple();

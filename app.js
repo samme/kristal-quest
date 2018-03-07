@@ -155,7 +155,7 @@ window.game = new Phaser.Game({
   type: Phaser.AUTO,
   title: '💎 Kristal Quest',
   url: 'https://github.com/samme/kristal-quest',
-  version: '0.0.3',
+  version: '0.0.4',
   banner: {
     background: ['#eb4149', '#ebba16', '#42af5c', '#2682b1', '#28434d']
   },

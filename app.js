@@ -155,7 +155,7 @@ window.game = new Phaser.Game({
   type: Phaser.AUTO,
   title: '💎 Kristal Quest',
   url: 'https://github.com/samme/kristal-quest',
-  version: '0.0.5',
+  version: '0.0.6',
   banner: {
     background: ['#eb4149', '#ebba16', '#42af5c', '#2682b1', '#28434d']
   },
@@ -959,7 +959,11 @@ module.exports = {
 
     this.bestTime = registry.get('bestTime');
     this.lastTime = registry.get('lastTime');
-    this.level = 1 + (this.levelCompleted || 0);
+    this.level = 1 + (registry.get('levelCompleted') || 0);
+
+    console.debug('bestTime', this.bestTime);
+    console.debug('lastTime', this.lastTime);
+    console.debug('level', this.level);
 
     this.events.once('shutdown', this.onShutdown, this);
   },

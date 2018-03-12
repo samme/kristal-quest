@@ -155,7 +155,8 @@ window.game = new Phaser.Game({
   type: Phaser.AUTO,
   title: '💎 Kristal Quest',
   url: 'https://github.com/samme/kristal-quest',
-  version: '0.0.6',
+  version: '0.0.7',
+  audio: { noAudio: true },
   banner: {
     background: ['#eb4149', '#ebba16', '#42af5c', '#2682b1', '#28434d']
   },
@@ -178,6 +179,18 @@ window.game = new Phaser.Game({
       y: -200
     }
   },
+  callbacks: {
+    postBoot: function (game) {
+      console.debug('game.config', game.config);
+      game.scene.dump();
+    }
+  },
+  defaultPlugins: [ // See Phaser.Plugins.DefaultScene
+    'Clock',
+    'InputPlugin',
+    'Loader',
+    'TweenManager'
+  ],
   scene: [
     require('scenes/boot'),
     require('scenes/default'),
@@ -199,8 +212,12 @@ module.exports = {
 
   key: 'boot',
 
+  init: function () {
+    console.debug('game', this.sys.game);
+  },
+
   preload: function () {
-    console.debug(this.scene.key, 'preload');
+    // console.debug(this.scene.key, 'preload');
     this.load.bitmapFont('smooth', 'atari-smooth.png', 'atari-smooth.xml');
     this.load.bitmapFont('sunset', 'atari-sunset.png', 'atari-sunset.xml');
     this.load.image('diamond');
@@ -229,8 +246,8 @@ module.exports = {
   create: function () {
     console.debug(this.scene.key, 'create');
     this.createAnims();
-    this.scene.start('default');
-    // this.scene.start('menu');
+    // this.scene.start('default');
+    this.scene.start('menu');
   },
 
   extend: {
@@ -292,15 +309,11 @@ module.exports = {
 
 require.register("scenes/default.js", function(exports, require, module) {
 var BLUE = 0x0000fa;
-
 var GREEN = 0x00ff00;
-
 var RED = 0xff0000;
-
+var RND = Phaser.Math.RND;
 var SECOND = 1000;
-
 var SILVER = 0xcccccc;
-
 var YELLOW = 0xffff00;
 
 module.exports = {
@@ -308,12 +321,9 @@ module.exports = {
   key: 'default',
 
   init: function (data) {
-    var canvas = this.sys.game.canvas;
-
     this.level = data.level || 1;
     this.playerIsGlowing = false;
     this.playerIsSlimed = false;
-    this.requestFullscreen = canvas.mozRequestFullScreen || canvas.webkitRequestFullscreen || canvas.requestFullscreen;
     this.score = 0;
     this.timeStarted = this.time.now;
 
@@ -324,26 +334,36 @@ module.exports = {
 
     this.events.once('shutdown', this.onShutdown, this);
 
+    console.log('scene', this);
+
+    console.assert(this.sys.displayList.length <= 1, 'Display list is (nearly) empty.');
+    console.debug('displayList', this.sys.displayList.length);
+
+    console.assert(this.physics.world.bodies.size === 0, 'Zero bodies exist.');
+    console.debug('bodies.size', this.physics.world.bodies.size);
+
     console.debug(this.scene.key, 'init', data);
     console.debug('level', this.level);
   },
 
   create: function () {
-    console.debug(this.scene.key, 'create');
-
     this.add.image(400, 300, 'space1')
+      .setName('outerSpace')
       .setScrollFactor(0, 0);
 
     this.add.image(800, -200, 'ship')
+      .setName('ship')
       .setScrollFactor(0.25, 0.25);
 
     this.mtn = this.add.tileSprite(400, 520, 800, 172, 'mtn')
+      .setName('mountains')
       .setScrollFactor(0, 0.5);
     this.mtn.tilePositionY = 4; // Avoid bleed at the top edge
 
-    var levelPrime = Phaser.Math.Wrap(this.level, 1, 10); // 1 to 10
-    var platformsCount = Phaser.Math.Clamp(10 - levelPrime, 3, 9); // 3 to 9
-    var slimesCount = Phaser.Math.Snap.Ceil(this.level / 2, 2); // 2 to 50, by 2
+    var levelPrime = this.level % 10; // 0 to 10
+    // var platformsCount = Phaser.Math.Clamp(10 - levelPrime, 3, 9); // 3 to 9
+    var platformsCount = 9;
+    var slimesCount = Phaser.Math.Snap.Ceil(this.level / 4, 2); // 2 to 26, by 2
 
     console.debug('levelPrime', levelPrime);
     console.debug('platformsCount', platformsCount);
@@ -353,7 +373,7 @@ module.exports = {
     this.createPineapple();
     this.createPlayer();
     this.createSlimes(slimesCount);
-    this.createGems();
+    this.createGems(this.gemsTotal);
     this.createText();
     this.createGlow();
     this.createParticles();
@@ -369,24 +389,25 @@ module.exports = {
 
     this.cursors = this.input.keyboard.createCursorKeys();
 
-    this.input.keyboard.on('keydown_F', this.startFullscreen, this);
+    if (this.sys.game.device.fullscreen.available) {
+      this.input.keyboard.on('keydown_F', this.startFullscreen, this);
+    }
 
     this.input.keyboard.once('keydown_Q', this.quit, this);
 
-    this.input.keyboard.once('keydown_N', function () {
-      this.scene.manager.stop('default');
-      this.scene.manager.start('default', { level: 1 + this.level });
-    }, this);
+    this.input.keyboard.once('keydown_N', this.nextLevel, this);
+
+    this.input.keyboard.once('keydown_R', this.restartLevel, this);
 
     var debugGraphic = this.physics.world.debugGraphic;
 
     if (debugGraphic) {
       // Seems to be lost after state restart
-      debugGraphic
-        .setDepth(1) // no effect?
-        .setVisible(false);
+      debugGraphic.setVisible(false);
       this.input.keyboard.on('keydown_D', this.toggleDebugGraphic, this);
     }
+
+    console.table(this.sys.displayList.list, ['name', 'x', 'y', 'visible']);
   },
 
   update: function () {
@@ -403,7 +424,9 @@ module.exports = {
     cursors: null,
     eyesGroup: null,
     gameOverText: null,
+    // gameOverTextGroup: null, // TODO
     gems: null,
+    gemsTotal: 6,
     glow: null,
     level: null,
     map: null,
@@ -423,7 +446,8 @@ module.exports = {
     timerText: null,
 
     calcPlayerJumpVelocity: function (player) {
-      return -270 * (1 + (Math.abs(player.body.velocity.x) / player.body.maxVelocity.x));
+      return -300 * (1 + (Math.abs(player.body.velocity.x) / player.body.maxVelocity.x));
+      // return -300 * (1 + (Math.pow(player.body.velocity.x / player.body.maxVelocity.x, 2)));
     },
 
     calcSlimeAccelerationX: function (slime) {
@@ -433,18 +457,14 @@ module.exports = {
       if (this.playerIsGlowing) {
         return 0.4 * maxVelocity.x * Phaser.Math.Clamp(slime.x - this.player.x, -1, 1);
       } else if (Math.abs(velocity.x) < maxVelocity.x) {
-        return 0.2 * maxVelocity.x * Phaser.Math.Clamp((velocity.x || this.randomSign()), -1, 1);
+        return 0.2 * maxVelocity.x * Phaser.Math.Clamp((velocity.x || RND.sign()), -1, 1);
       } else {
         return 0;
       }
     },
 
     calcSlimeInitialVelocity: function () {
-      return 60 * this.randomSign();
-    },
-
-    calcSlimeMaxVelocity: function () {
-      return 60 + 5 * Math.floor(this.level / 10);
+      return 60 * RND.sign();
     },
 
     calcSlimeScaleX: function (slime) {
@@ -499,13 +519,13 @@ module.exports = {
         .setBounce(1, 1)
         .setCollideWorldBounds(true)
         .setName('gem' + i)
-        .setVelocity(120 * this.randomSign(), 120 * this.randomSign());
+        .setVelocity(120 * RND.sign(), 120 * RND.sign());
     },
 
-    createGems: function () {
+    createGems: function (count) {
       this.gems = this.physics.add.group({
         key: 'diamond',
-        repeat: 11
+        repeat: count - 1
       });
 
       this.gems.children.iterate(this.createGem, this);
@@ -515,6 +535,7 @@ module.exports = {
       this.glow = this.add.image(this.player.x, this.player.y, 'yellow')
         .setAlpha(0.4)
         .setBlendMode('ADD')
+        .setName('glow')
         .setVisible(false);
 
       // Probably this should be paused while the glow is invisible.
@@ -529,21 +550,28 @@ module.exports = {
     },
 
     createParticles: function () {
-      this.starsEmitter = this.add.particles('star').createEmitter({
-        accelerationY: -600,
-        alpha: { start: 1, end: 0 },
-        blendMode: 'ADD',
-        lifespan: { min: 500, max: 1500 },
-        on: false,
-        speed: 60
-      });
+      this.starsEmitter = this.add.particles('star')
+        .createEmitter({
+          accelerationY: -600,
+          alpha: { start: 1, end: 0 },
+          blendMode: 'ADD',
+          lifespan: SECOND,
+          maxParticles: 100,
+          on: false,
+          speed: { min: 30, max: 90 }
+        });
+
+      this.starsEmitter.name = 'starsEmitter';
 
       this.starsEmitter.startFollow(this.player);
     },
 
     createPineapple: function () {
       this.pineapple = this.physics.add.image(0, 0, 'fruit', 10)
-        .setCollideWorldBounds(true);
+        .setCollideWorldBounds(true)
+        .setName('pineapple');
+
+      this.pineapple.body.setSize(8, 32);
 
       Phaser.Geom.Rectangle.Random(this.physics.world.bounds, this.pineapple);
     },
@@ -559,16 +587,17 @@ module.exports = {
         height: 3,
         cellWidth: 600,
         cellHeight: -160, // bottom to top
-        position: 6, // CENTER?
+        position: 6, // Phaser.Display.Align.CENTER
         x: 200,
         y: 425
       });
 
       this.platforms.children.iterate(function (platform, i) {
-        platform.x += 200 * ((i * this.level) % 2);
+        platform.x += 200 * ((i * this.level) % 4);
         platform.y += 32 * ((i * this.level) % 3);
         platform
           .refreshBody() // Because we moved a static body after creation
+          .setName('platform' + i)
           .setTint(BLUE);
       }, this);
     },
@@ -596,7 +625,7 @@ module.exports = {
         .setDataEnabled()
         .setData('eyes', eyes)
         .setData('i', i)
-        .setMaxVelocity(this.calcSlimeMaxVelocity(), 600)
+        .setMaxVelocity(60, 600)
         .setName('slime' + i)
         .setVelocity(this.calcSlimeInitialVelocity(), 0);
 
@@ -628,29 +657,33 @@ module.exports = {
     },
 
     createText: function () {
-      this.timerText = this.add.bitmapText(0, 5, 'smooth', '9999')
+      this.timerText = this.add.bitmapText(224, 0, 'smooth')
         .setFontSize(32)
+        .setName('timerText')
         .setScrollFactor(0, 0);
 
-      this.scoreText = this.add.bitmapText(125, 5, 'sunset', '')
+      this.scoreText = this.add.bitmapText(0, 0, 'sunset')
         .setFontSize(32)
+        .setName('scoreText')
         .setScrollFactor(0, 0);
 
-      this.gameOverText = this.add.bitmapText(400, 300, 'sunset', '')
+      this.gameOverText = this.add.bitmapText(400, 300, 'sunset')
+        .setName('gameOverText')
         .setScrollFactor(0, 0)
         .setVisible(false);
 
-      this.quitText = this.add.bitmapText(400, 450, 'smooth', '[Q] Quit')
+      this.quitText = this.add.bitmapText(400, 450, 'smooth', '[N] Next\n[R] Restart\n[Q] Quit')
         .setFontSize(32)
+        .setName('quitText')
         .setOrigin(0.5, 0.5)
         .setScrollFactor(0, 0)
         .setTint(SILVER)
         .setVisible(false);
 
-      this.add.bitmapText(525, 5, 'smooth', 'LEVEL ' + this.level)
+      this.add.bitmapText(512, 0, 'smooth', 'Level ' + Phaser.Utils.String.Pad(this.level, 2, '0', 1))
         .setFontSize(32)
-        .setScrollFactor(0, 0)
-        .setTint(SILVER);
+        .setName('levelText')
+        .setScrollFactor(0, 0);
 
       this.updateText();
     },
@@ -700,18 +733,26 @@ module.exports = {
       this.gameOver('GAME OVER'); // :(
     },
 
+    nextLevel: function () {
+      this.restartScene({ level: 1 + this.level });
+    },
+
     onShutdown: function () {
       console.debug(this.scene.key, 'onShutdown');
       this.input.keyboard.removeAllListeners();
-      this.physics.world.colliders.destroy();
+      this.physics.world.destroy();
     },
 
     quit: function () {
       this.scene.start('menu');
     },
 
-    randomSign: function () {
-      return Phaser.Math.RND.sign();
+    restartLevel: function () {
+      this.restartScene({ level: this.level });
+    },
+
+    restartScene: function (data) {
+      this.scene.start(this.scene.key, data);
     },
 
     savePlayerProgress: function () {
@@ -732,6 +773,8 @@ module.exports = {
       }
 
       console.debug('bestTime', registry.get('bestTime'));
+      console.debug('lastTime', registry.get('lastTime'));
+      console.debug('levelCompleted', registry.get('levelCompleted'));
     },
 
     secondsElapsed: function () {
@@ -757,6 +800,7 @@ module.exports = {
       player.body.allowDrag = true;
 
       player
+        .setAccelerationX(0)
         .setActive(false)
         .setDrag(1200, 0)
         .setTint(GREEN);
@@ -765,9 +809,6 @@ module.exports = {
         .setAccelerationX(0)
         .setDrag(1200, 0)
         .setGravityY(0);
-
-      // FPS
-      // this.cameras.main.fade(10 * SECOND, 0.1, 0.8, 0.2);
 
       this.lose();
     },
@@ -780,7 +821,7 @@ module.exports = {
           .setGravityY(-720);
       }
 
-      this.time.delayedCall(Phaser.Math.Between(1, 2.5) * SECOND
+      this.time.delayedCall(Phaser.Math.Between(1, 2) * SECOND
         , this.slimeStopClimb, [slime], this);
     },
 
@@ -798,16 +839,11 @@ module.exports = {
     },
 
     startFullscreen: function () {
-      if (!(document.fullscreenEnabled || document.mozFullScreenEnabled || document.webkitFullscreenEnabled)) {
-        console.warn('Fullscreen is unavailable here.');
-        return;
-      }
-
       if (document.fullscreenElement) {
         return;
       }
 
-      this.requestFullscreen.call(this.sys.game.canvas);
+      this.sys.game.canvas[this.sys.game.device.fullscreen.request]();
     },
 
     startPlayerGlow: function () {
@@ -835,12 +871,7 @@ module.exports = {
 
       if (debugGraphic) {
         debugGraphic.setVisible(!debugGraphic.visible);
-        console.debug('toggleDebugGraphic', debugGraphic.visible);
       }
-    },
-
-    toggleMap: function () {
-      // TODO
     },
 
     updateBackground: function () {
@@ -873,20 +904,25 @@ module.exports = {
       var body = player.body;
       var onFloor = this.isOnFloor(player);
 
-      player.body.allowDrag = onFloor;
+      body.allowDrag = onFloor;
+      body.allowGravity = !onFloor;
 
       if (onFloor) {
         if (this.cursors.left.isDown) {
-          body.velocity.x -= 30;
+          player.setAccelerationX(-1800);
           player.anims.play('left', true);
         } else if (this.cursors.right.isDown) {
-          body.velocity.x += 30;
+          player.setAccelerationX(1800);
           player.anims.play('right', true);
+        } else {
+          player.setAccelerationX(0);
         }
 
         if (this.cursors.up.isDown) {
           player.setVelocityY(this.calcPlayerJumpVelocity(player));
         }
+      } else {
+        player.setAccelerationX(0);
       }
 
       if (body.speed < 9) {
@@ -910,11 +946,13 @@ module.exports = {
 
     updateText: function () {
       if (this.scoreText.active) {
-        this.scoreText.setText('*'.repeat(this.score));
+        var remaining = this.gemsTotal - this.score;
+
+        this.scoreText.setText('*'.repeat(this.score) + '-'.repeat(remaining));
       }
 
       if (this.timerText.active) {
-        this.timerText.setText(this.secondsElapsed());
+        this.timerText.setText('Time ' + this.secondsElapsed());
       }
     },
 
@@ -944,12 +982,6 @@ module.exports = {
 });
 
 require.register("scenes/menu.js", function(exports, require, module) {
-function stringFormat (string, values) {
-  return string.replace(/%([0-9]+)/g, function (s, n) {
-    return values[Number(n) - 1];
-  });
-}
-
 module.exports = {
 
   key: 'menu',
@@ -957,13 +989,7 @@ module.exports = {
   init: function () {
     var registry = this.sys.game.registry;
 
-    this.bestTime = registry.get('bestTime');
-    this.lastTime = registry.get('lastTime');
     this.level = 1 + (registry.get('levelCompleted') || 0);
-
-    console.debug('bestTime', this.bestTime);
-    console.debug('lastTime', this.lastTime);
-    console.debug('level', this.level);
 
     this.events.once('shutdown', this.onShutdown, this);
   },
@@ -978,7 +1004,7 @@ module.exports = {
       .setOrigin(0.25, 0.25)
       .setFontSize(32);
 
-    this.caption = this.add.bitmapText(400, 550, 'smooth', this.captionText())
+    this.add.bitmapText(400, 550, 'smooth', this.captionText())
       .setOrigin(0.125, 0.125)
       .setFontSize(16);
 
@@ -989,18 +1015,16 @@ module.exports = {
 
   extend: {
 
-    bestTime: null,
-
-    caption: null,
-
-    lastTime: null,
-
     level: null,
 
-    levelCompleted: null,
-
     captionText: function () {
-      return stringFormat('Level: %1  Last Time: %2  Best Time:  %3', [this.level, this.lastTime || '-', this.bestTime || '-']);
+      var registry = this.sys.game.registry;
+
+      return Phaser.Utils.String.Format('Level: %1  Last Time: %2  Best Time: %3', [
+        this.level,
+        registry.get('lastTime') || '-',
+        registry.get('bestTime') || '-'
+      ]);
     },
 
     onShutdown: function () {

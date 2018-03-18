@@ -155,7 +155,7 @@ window.game = new Phaser.Game({
   type: Phaser.AUTO,
   title: '💎 Kristal Quest',
   url: 'https://github.com/samme/kristal-quest',
-  version: '0.0.7',
+  version: '0.0.8',
   audio: { noAudio: true },
   banner: {
     background: ['#eb4149', '#ebba16', '#42af5c', '#2682b1', '#28434d']
@@ -407,7 +407,9 @@ module.exports = {
       this.input.keyboard.on('keydown_D', this.toggleDebugGraphic, this);
     }
 
-    console.table(this.sys.displayList.list, ['name', 'x', 'y', 'visible']);
+    if (!this.sys.game.device.browser.safari) {
+      console.table(this.sys.displayList.list, ['name', 'x', 'y', 'visible']);
+    }
   },
 
   update: function () {
@@ -593,7 +595,7 @@ module.exports = {
       });
 
       this.platforms.children.iterate(function (platform, i) {
-        platform.x += 200 * ((i * this.level) % 4);
+        platform.x += 50 * ((i * this.level) % 16);
         platform.y += 32 * ((i * this.level) % 3);
         platform
           .refreshBody() // Because we moved a static body after creation
@@ -606,9 +608,9 @@ module.exports = {
       this.player = this.physics.add.sprite(800, 600, 'dude');
 
       this.player
-        .setBounce(0.2)
+        .setBounce(0.2, 0.1)
         .setCollideWorldBounds(true)
-        .setDragX(600)
+        .setDragX(1200)
         .setMaxVelocity(300, 1200)
         .setName('player');
 
@@ -720,17 +722,13 @@ module.exports = {
       return sprite.body.blocked.down || sprite.body.touching.down;
     },
 
-    isOnWall: function (sprite) {
-      return sprite.body.touching.left || sprite.body.touching.right;
-    },
-
     // Filter for some of the physics colliders
     isPlayerActive: function () {
       return this.player.active;
     },
 
     lose: function () {
-      this.gameOver('GAME OVER'); // :(
+      this.gameOver('SLIMED'); // :(
     },
 
     nextLevel: function () {

@@ -147,6 +147,20 @@ var __makeRelativeRequire = function(require, mappings, pref) {
     return require(name);
   }
 };
+require.register("data/colors.js", function(exports, require, module) {
+module.exports = Object.freeze({
+
+  BLUE:   0x0000fa,
+  GRAY:   0x222222,
+  GREEN:  0x00ff00,
+  RED:    0xff0000,
+  SILVER: 0xcccccc,
+  YELLOW: 0xffff00
+
+});
+
+});
+
 require.register("initialize.js", function(exports, require, module) {
 window.game = new Phaser.Game({
 
@@ -361,7 +375,6 @@ module.exports = {
     this.mtn.tilePositionY = 4; // Avoid bleed at the top edge
 
     var levelPrime = this.level % 10; // 0 to 10
-    // var platformsCount = Phaser.Math.Clamp(10 - levelPrime, 3, 9); // 3 to 9
     var platformsCount = 9;
     var slimesCount = Phaser.Math.Snap.Ceil(this.level / 4, 2); // 2 to 26, by 2
 
@@ -388,10 +401,6 @@ module.exports = {
     this.physics.add.overlap(this.player, this.slimes, this.collidePlayerVsSlime, this.isPlayerActive, this);
 
     this.cursors = this.input.keyboard.createCursorKeys();
-
-    if (this.sys.game.device.fullscreen.available) {
-      this.input.keyboard.on('keydown_F', this.startFullscreen, this);
-    }
 
     this.input.keyboard.once('keydown_Q', this.quit, this);
 
@@ -439,11 +448,11 @@ module.exports = {
     playerIsGlowing: null,
     playerIsSlimed: null,
     quitText: null,
-    requestFullscreen: null,
     score: null,
     scoreText: null,
     slimes: null,
-    starsEmitter: null,
+    starsBurst: null,
+    starsFlow: null,
     timeStarted: null,
     timerText: null,
 
@@ -485,7 +494,7 @@ module.exports = {
 
     collectGem: function (player, gem) {
       gem.disableBody(true, true);
-      this.starsEmitter.explode(10);
+      this.starsBurst.explode();
       this.score += 1;
       this.updateText();
       this.checkGems();
@@ -552,20 +561,33 @@ module.exports = {
     },
 
     createParticles: function () {
-      this.starsEmitter = this.add.particles('star')
-        .createEmitter({
-          accelerationY: -600,
-          alpha: { start: 1, end: 0 },
-          blendMode: 'ADD',
-          lifespan: SECOND,
-          maxParticles: 100,
-          on: false,
-          speed: { min: 30, max: 90 }
-        });
+      var stars = this.add.particles('star');
 
-      this.starsEmitter.name = 'starsEmitter';
+      this.starsBurst = stars.createEmitter({
+        accelerationY: -600,
+        alpha: { start: 1, end: 0 },
+        blendMode: 'ADD',
+        follow: this.player,
+        lifespan: SECOND,
+        maxParticles: 30,
+        name: 'starsBurst',
+        on: false,
+        quantity: 10,
+        speed: { min: 30, max: 90 }
+      });
 
-      this.starsEmitter.startFollow(this.player);
+      this.starsFlow = stars.createEmitter({
+        accelerationY: -600,
+        alpha: { start: 1, end: 0 },
+        blendMode: 'ADD',
+        follow: this.player,
+        lifespan: SECOND,
+        maxParticles: 60,
+        name: 'starsFlow',
+        on: false,
+        speed: { min: 30, max: 90 }
+      });
+
     },
 
     createPineapple: function () {
@@ -836,14 +858,6 @@ module.exports = {
       this.slimes.children.iterate(this.slimeExplode, this);
     },
 
-    startFullscreen: function () {
-      if (document.fullscreenElement) {
-        return;
-      }
-
-      this.sys.game.canvas[this.sys.game.device.fullscreen.request]();
-    },
-
     startPlayerGlow: function () {
       this.playerIsGlowing = true;
 
@@ -964,10 +978,7 @@ module.exports = {
         .setCollideWorldBounds(false)
         .setDrag(600, 0);
 
-      // After `explode`, `frequency` (-1) must be reset to 0 (or larger)
-      this.starsEmitter
-        .setFrequency(0, 1)
-        .start(); // `flow(0, 1)` would also work.
+      this.starsFlow.start();
 
       this.savePlayerProgress();
 

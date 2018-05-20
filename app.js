@@ -299,14 +299,16 @@ module.exports = {
       this.progressBar = this.add.graphics();
     },
 
-    onLoadComplete: function () {
+    onLoadComplete: function (loader, totalComplete, totalFailed) {
+      console.debug('complete', totalComplete);
+      console.debug('failed', totalFailed);
       this.progressBar.destroy();
     },
 
     onLoadProgress: function (progress) {
       // console.debug('progress', progress);
       var rect = this.progressBarRectangle;
-      var color = (this.load.failed.size > 0) ? RED : WHITE;
+      var color = (this.load.totalFailed > 0) ? RED : WHITE;
       this.progressBar
         .clear()
         .fillStyle(GRAY)
@@ -335,6 +337,8 @@ module.exports = {
   key: 'default',
 
   init: function (data) {
+    console.debug(this.scene.key, 'init', data, this);
+
     this.level = data.level || 1;
     this.playerIsGlowing = false;
     this.playerIsSlimed = false;
@@ -342,22 +346,13 @@ module.exports = {
     this.timeStarted = this.time.now;
 
     if (this.timeStarted > 1e9) {
+      console.warn('time.now is too large', this.time.now);
       this.time.update(0, 0);
       this.timeStarted = this.time.now;
+      console.warn('time.now was reset', this.time.now);
     }
 
-    this.events.once('shutdown', this.onShutdown, this);
-
-    console.log('scene', this);
-
-    console.assert(this.sys.displayList.length <= 1, 'Display list is (nearly) empty.');
-    console.debug('displayList', this.sys.displayList.length);
-
-    console.assert(this.physics.world.bodies.size === 0, 'Zero bodies exist.');
-    console.debug('bodies.size', this.physics.world.bodies.size);
-
-    console.debug(this.scene.key, 'init', data);
-    console.debug('level', this.level);
+    this.events.once('shutdown', this.shutdown, this);
   },
 
   create: function () {
@@ -395,7 +390,7 @@ module.exports = {
       .setBounds(0, -1200, 1600, 1800)
       .startFollow(this.player);
 
-    this.physics.add.collider([this.gems, this.pineapple, this.player, this.slimes], this.platforms);
+    this.physics.add.collider(this.platforms, [this.gems, this.pineapple, this.player, this.slimes]);
     this.physics.add.overlap(this.player, this.gems, this.collectGem, this.isPlayerActive, this);
     this.physics.add.overlap(this.player, this.pineapple, this.collectPineapple, this.isPlayerActive, this);
     this.physics.add.overlap(this.player, this.slimes, this.collidePlayerVsSlime, this.isPlayerActive, this);
@@ -407,6 +402,8 @@ module.exports = {
     this.input.keyboard.once('keydown_N', this.nextLevel, this);
 
     this.input.keyboard.once('keydown_R', this.restartLevel, this);
+    
+    this.input.keyboard.once('keydown_L', this.lose, this);
 
     var debugGraphic = this.physics.world.debugGraphic;
 
@@ -419,9 +416,18 @@ module.exports = {
     if (!this.sys.game.device.browser.safari) {
       console.table(this.sys.displayList.list, ['name', 'x', 'y', 'visible']);
     }
+  
+    if (this.timeStarted > 1e9) {
+      console.warn('time.now is too large', this.time.now);
+      // this.time.update(0, 0);
+      // this.timeStarted = this.time.now;
+      // console.warn('time.now was reset', this.time.now);
+    }
   },
 
   update: function () {
+    console.assert(this.sys.settings.active === true, 'Scene is active');
+    console.assert(this.sys.settings.status === 5, 'Scene is running');
     this.updateBackground();
     this.updatePlayer();
     this.updateGlow();
@@ -439,6 +445,7 @@ module.exports = {
     gems: null,
     gemsTotal: 6,
     glow: null,
+    glowTween: null,
     level: null,
     map: null,
     mtn: null,
@@ -550,7 +557,7 @@ module.exports = {
         .setVisible(false);
 
       // Probably this should be paused while the glow is invisible.
-      this.tweens.add({
+      this.glowTween = this.tweens.add({
         alpha: 0.6,
         duration: 2000,
         ease: 'Sine.easeInOut',
@@ -757,14 +764,20 @@ module.exports = {
       this.restartScene({ level: 1 + this.level });
     },
 
-    onShutdown: function () {
-      console.debug(this.scene.key, 'onShutdown');
-      this.input.keyboard.removeAllListeners();
-      this.physics.world.destroy();
+    shutdown: function () {
+      console.debug(this.scene.key, 'shutdown');
+      console.trace();
+      console.assert(this.sys.settings.active === false, 'Scene is not active');
+      console.assert(this.sys.settings.status !== 5, 'Scene is not running');
+      this.scene.manager.dump();
+      this.input.keyboard.removeAllListeners(); // TODO
     },
 
     quit: function () {
       this.scene.start('menu');
+      console.assert(this.sys.settings.active === false, 'Scene is not active');
+      console.assert(this.sys.settings.status !== 5, 'Scene is not running');
+      this.scene.manager.dump();
     },
 
     restartLevel: function () {

@@ -155,7 +155,8 @@ module.exports = Object.freeze({
   GREEN:  0x00ff00,
   RED:    0xff0000,
   SILVER: 0xcccccc,
-  YELLOW: 0xffff00
+  YELLOW: 0xffff00,
+  WHITE:  0xffffff
 
 });
 
@@ -176,14 +177,8 @@ window.game = new Phaser.Game({
   },
   // pixelArt: true,
   clearBeforeRender: false,
-  plugins: {
-    global: [
-      { key: 'SceneWatcher', plugin: require('plugins/sceneWatcher'), start: true }
-    ]
-  },
   loader: {
-    path: 'assets/',
-    maxParallelDownloads: 6
+    path: 'assets/'
   },
   physics: {
     default: 'arcade',
@@ -202,8 +197,6 @@ window.game = new Phaser.Game({
     postBoot: function (game) {
       console.debug('game.config', game.config);
       game.scene.dump();
-      console.log('plugins.getDefaultScenePlugins()', game.plugins.getDefaultScenePlugins());
-      game.plugins.get('SceneWatcher').watch();
     }
   },
   scene: [
@@ -217,135 +210,8 @@ window.game = new Phaser.Game({
 
 });
 
-require.register("plugins/sceneWatcher.js", function(exports, require, module) {
-var Pad = Phaser.Utils.String.Pad;
-var ICON_DEFAULT = ' ';
-var ICON_PAUSED = '.';
-var ICON_RUNNING = '*';
-var ICON_SLEEPING = '-';
-var NEWLINE = '\n';
-var PAD_LEFT = 2;
-var PAD_RIGHT = 1;
-var EVENTS = [ 'boot', 'pause', 'resume', 'sleep', 'wake', 'start', 'ready', 'shutdown', 'destroy' ];
-var SPACE = ' ';
-var STATES = [ 'pending', 'init', 'start', 'loading', 'creating', 'running', 'paused', 'sleeping', 'shutdown', 'destroyed' ];
-var VIEW_STYLE = {
-  position: 'absolute',
-  left: '0',
-  top: '0',
-  margin: '0',
-  padding: '0',
-  width: '20em',
-  fontSize: '16px',
-  lineHeight: '20px',
-  backgroundColor: 'rgba(0,0,0,0.875)',
-  color: 'white',
-  pointerEvents: 'none'
-};
-var out = [];
-
-var getIcon = function (scene) {
-  switch (scene.sys.settings.status) {
-  case Phaser.Scenes.RUNNING:
-    return ICON_RUNNING;
-  case Phaser.Scenes.SLEEPING:
-    return ICON_SLEEPING;
-  case Phaser.Scenes.PAUSED:
-    return ICON_PAUSED;
-  default:
-    return ICON_DEFAULT;
-  }
-};
-
-var getActiveIcon = function (scene) {
-  return scene.sys.scenePlugin.isActive() ? '+' : ' ';
-};
-
-var getVisibleIcon = function (scene) {
-  return scene.sys.scenePlugin.isVisible() ? '+' : ' ';
-};
-
-module.exports = new Phaser.Class({
-
-  Extends: Phaser.Plugins.BasePlugin,
-
-  eventHandlers: {},
-
-  init: function () {
-    this.view = document.createElement('pre');
-    Object.assign(this.view.style, VIEW_STYLE);
-    this.game.canvas.parentNode.append(this.view);
-
-    EVENTS.forEach(function (eventName) {
-      this.eventHandlers[eventName] = function (sys) {
-        console.log(eventName, sys.settings.key);
-      };
-    }, this);
-  },
-
-  start: function () {
-    this.game.events.on('poststep', this.postStep, this);
-  },
-
-  stop: function () {
-    this.game.events.off('poststep', this.postStep, this);
-  },
-
-  destroy: function () {
-    this.view.parentNode.remove(this.view);
-    delete this.view;
-    Phaser.Plugins.BasePlugin.call(this);
-  },
-
-  postStep: function () {
-    this.view.textContent = this.getOutput();
-  },
-
-  getOutput: function () {
-    return this.game.scene.scenes.map(this.getSceneOutput, this).join(NEWLINE);
-    // var scenes = this.game.scene.scenes;
-
-    // out.length = 0;
-
-    // for (var i = 0, len = scenes.length; i < len; i++) {
-    //   out[i] = this.getSceneOutput(scenes[i]);
-    // }
-
-    // return out.join(NEWLINE);
-  },
-
-  getSceneOutput: function (scene) {
-    var settings = scene.sys.settings;
-
-    return Pad(settings.key.substr(0, 12), 12, SPACE, PAD_RIGHT) + SPACE +
-      getIcon(scene) + SPACE +
-      // getActiveIcon(scene) + SPACE +
-      // getVisibleIcon(scene) + SPACE +
-      Pad(STATES[settings.status] || '?', 8, SPACE, PAD_LEFT) +
-      Pad(scene.sys.updateList._list.length, 4, SPACE, PAD_RIGHT) +
-      Pad(scene.sys.displayList.length, 4, SPACE, PAD_RIGHT);
-  },
-
-  watch: function () {
-    this.game.scene.scenes.forEach(this.watchScene, this);
-  },
-
-  watchScene: function (scene) {
-    var events = scene.events;
-
-    for (var eventName in this.eventHandlers) {
-      events.on(eventName, this.eventHandlers[eventName], this);
-    }
-  }
-
-});
-
-});
-
 require.register("scenes/boot.js", function(exports, require, module) {
-var GRAY = 0x222222;
-var RED = 0xff2200;
-var WHITE = 0xffffff;
+var colors = require('data/colors');
 
 module.exports = {
 
@@ -353,14 +219,8 @@ module.exports = {
 
   plugins: ['DataManagerPlugin', 'Loader'],
 
-  init: function (data) {
-    // console.debug('init', this.scene.key);
-    //
-    var registry = this.sys.game.registry;
-
-    registry.set('levelCompleted', 0);
-
-    this.events.once('shutdown', this.shutdown, this);
+  init: function () {
+    this.sys.game.registry.set('levelCompleted', 0);
   },
 
   preload: function () {
@@ -440,17 +300,13 @@ module.exports = {
     onLoadProgress: function (progress) {
       // console.debug('progress', progress);
       var rect = this.progressBarRectangle;
-      var color = (this.load.totalFailed > 0) ? RED : WHITE;
+      var color = (this.load.totalFailed > 0) ? colors.RED : colors.WHITE;
       this.progressBar
         .clear()
-        .fillStyle(GRAY)
+        .fillStyle(colors.GRAY)
         .fillRect(rect.x, rect.y, rect.width, rect.height)
         .fillStyle(color)
         .fillRect(rect.x, rect.y, progress * rect.width, rect.height);
-    },
-
-    shutdown: function () {
-      console.debug(this.scene.key, 'shutdown');
     }
 
   }
@@ -460,12 +316,10 @@ module.exports = {
 });
 
 require.register("scenes/default.js", function(exports, require, module) {
-var BLUE = 0x0000fa;
-var GREEN = 0x00ff00;
-var RED = 0xff0000;
 var RND = Phaser.Math.RND;
 var SECOND = 1000;
-var YELLOW = 0xffff00;
+
+var colors = require('data/colors');
 
 module.exports = {
 
@@ -749,7 +603,7 @@ module.exports = {
         platform
           .refreshBody()
           .setName('platform' + i)
-          .setTint(BLUE);
+          .setTint(colors.BLUE);
       }, this);
     },
 
@@ -922,7 +776,7 @@ module.exports = {
 
     slimeExplode: function (slime) {
       slime
-        .setTint(RED)
+        .setTint(colors.RED)
         .setVelocityY(-480 + slime.body.velocity.y);
 
       slime.getData('eyes').setFlipY(-1);
@@ -939,7 +793,7 @@ module.exports = {
         .setAccelerationX(0)
         .setActive(false)
         .setDrag(1200, 60)
-        .setTint(GREEN);
+        .setTint(colors.GREEN);
 
       slime
         .setAccelerationX(0)
@@ -982,7 +836,7 @@ module.exports = {
         .setScale(1)
         .setVisible(true);
 
-      this.player.setTint(YELLOW);
+      this.player.setTint(colors.YELLOW);
 
       this.time.delayedCall(9 * SECOND, this.fadeOutGlow, null, this);
       this.time.delayedCall(10 * SECOND, this.stopPlayerGlow, null, this);

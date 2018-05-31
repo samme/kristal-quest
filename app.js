@@ -176,6 +176,11 @@ window.game = new Phaser.Game({
   },
   // pixelArt: true,
   clearBeforeRender: false,
+  plugins: {
+    global: [
+      { key: 'SceneWatcher', plugin: require('plugins/sceneWatcher'), start: true }
+    ]
+  },
   loader: {
     path: 'assets/',
     maxParallelDownloads: 6
@@ -197,19 +202,141 @@ window.game = new Phaser.Game({
     postBoot: function (game) {
       console.debug('game.config', game.config);
       game.scene.dump();
+      console.log('plugins.getDefaultScenePlugins()', game.plugins.getDefaultScenePlugins());
+      game.plugins.get('SceneWatcher').watch();
     }
   },
-  defaultPlugins: [ // See Phaser.Plugins.DefaultScene
-    'Clock',
-    'InputPlugin',
-    'Loader',
-    'TweenManager'
-  ],
   scene: [
     require('scenes/boot'),
     require('scenes/default'),
-    require('scenes/menu')
+    require('scenes/menu'),
+    require('scenes/end')
   ]
+
+});
+
+});
+
+require.register("plugins/sceneWatcher.js", function(exports, require, module) {
+var Pad = Phaser.Utils.String.Pad;
+var ICON_DEFAULT = ' ';
+var ICON_PAUSED = '.';
+var ICON_RUNNING = '*';
+var ICON_SLEEPING = '-';
+var NEWLINE = '\n';
+var PAD_LEFT = 2;
+var PAD_RIGHT = 1;
+var EVENTS = [ 'boot', 'pause', 'resume', 'sleep', 'wake', 'start', 'ready', 'shutdown', 'destroy' ];
+var SPACE = ' ';
+var STATES = [ 'pending', 'init', 'start', 'loading', 'creating', 'running', 'paused', 'sleeping', 'shutdown', 'destroyed' ];
+var VIEW_STYLE = {
+  position: 'absolute',
+  left: '0',
+  top: '0',
+  margin: '0',
+  padding: '0',
+  width: '20em',
+  fontSize: '16px',
+  lineHeight: '20px',
+  backgroundColor: 'rgba(0,0,0,0.875)',
+  color: 'white',
+  pointerEvents: 'none'
+};
+var out = [];
+
+var getIcon = function (scene) {
+  switch (scene.sys.settings.status) {
+  case Phaser.Scenes.RUNNING:
+    return ICON_RUNNING;
+  case Phaser.Scenes.SLEEPING:
+    return ICON_SLEEPING;
+  case Phaser.Scenes.PAUSED:
+    return ICON_PAUSED;
+  default:
+    return ICON_DEFAULT;
+  }
+};
+
+var getActiveIcon = function (scene) {
+  return scene.sys.scenePlugin.isActive() ? '+' : ' ';
+};
+
+var getVisibleIcon = function (scene) {
+  return scene.sys.scenePlugin.isVisible() ? '+' : ' ';
+};
+
+module.exports = new Phaser.Class({
+
+  Extends: Phaser.Plugins.BasePlugin,
+
+  eventHandlers: {},
+
+  init: function () {
+    this.view = document.createElement('pre');
+    Object.assign(this.view.style, VIEW_STYLE);
+    this.game.canvas.parentNode.append(this.view);
+
+    EVENTS.forEach(function (eventName) {
+      this.eventHandlers[eventName] = function (sys) {
+        console.log(eventName, sys.settings.key);
+      };
+    }, this);
+  },
+
+  start: function () {
+    this.game.events.on('poststep', this.postStep, this);
+  },
+
+  stop: function () {
+    this.game.events.off('poststep', this.postStep, this);
+  },
+
+  destroy: function () {
+    this.view.parentNode.remove(this.view);
+    delete this.view;
+    Phaser.Plugins.BasePlugin.call(this);
+  },
+
+  postStep: function () {
+    this.view.textContent = this.getOutput();
+  },
+
+  getOutput: function () {
+    return this.game.scene.scenes.map(this.getSceneOutput, this).join(NEWLINE);
+    // var scenes = this.game.scene.scenes;
+
+    // out.length = 0;
+
+    // for (var i = 0, len = scenes.length; i < len; i++) {
+    //   out[i] = this.getSceneOutput(scenes[i]);
+    // }
+
+    // return out.join(NEWLINE);
+  },
+
+  getSceneOutput: function (scene) {
+    var settings = scene.sys.settings;
+
+    return Pad(settings.key.substr(0, 12), 12, SPACE, PAD_RIGHT) + SPACE +
+      getIcon(scene) + SPACE +
+      // getActiveIcon(scene) + SPACE +
+      // getVisibleIcon(scene) + SPACE +
+      Pad(STATES[settings.status] || '?', 8, SPACE, PAD_LEFT) +
+      Pad(scene.sys.updateList._list.length, 4, SPACE, PAD_RIGHT) +
+      Pad(scene.sys.displayList.length, 4, SPACE, PAD_RIGHT);
+  },
+
+  watch: function () {
+    this.game.scene.scenes.forEach(this.watchScene, this);
+  },
+
+  watchScene: function (scene) {
+    var events = scene.events;
+
+    for (var eventName in this.eventHandlers) {
+      events.on(eventName, this.eventHandlers[eventName], this);
+    }
+  }
 
 });
 
@@ -217,33 +344,40 @@ window.game = new Phaser.Game({
 
 require.register("scenes/boot.js", function(exports, require, module) {
 var GRAY = 0x222222;
-
 var RED = 0xff2200;
-
 var WHITE = 0xffffff;
 
 module.exports = {
 
   key: 'boot',
 
-  init: function () {
-    console.debug('game', this.sys.game);
+  plugins: ['DataManagerPlugin', 'Loader'],
+
+  init: function (data) {
+    // console.debug('init', this.scene.key);
+    //
+    var registry = this.sys.game.registry;
+
+    registry.set('levelCompleted', 0);
+
+    this.events.once('shutdown', this.shutdown, this);
   },
 
   preload: function () {
-    // console.debug(this.scene.key, 'preload');
     this.load.bitmapFont('smooth', 'atari-smooth.png', 'atari-smooth.xml');
     this.load.bitmapFont('sunset', 'atari-sunset.png', 'atari-sunset.xml');
-    this.load.image('diamond');
-    this.load.image('mtn');
-    this.load.image('platform');
-    this.load.image('ship');
-    this.load.image('slime');
-    this.load.image('slimeeyes');
-    this.load.image('space1');
-    this.load.image('space2');
-    this.load.image('star');
-    this.load.image('yellow');
+    this.load.image([
+      'diamond',
+      'mtn',
+      'platform',
+      'ship',
+      'slime',
+      'slimeeyes',
+      'space1',
+      'space2',
+      'star',
+      'yellow'
+    ]);
     this.load.spritesheet('dude', 'dude.png', {
       frameWidth: 32,
       frameHeight: 48
@@ -258,10 +392,9 @@ module.exports = {
   },
 
   create: function () {
-    console.debug(this.scene.key, 'create');
     this.createAnims();
-    // this.scene.start('default');
-    this.scene.start('menu');
+    this.scene.get('playOver').addListeners();
+    this.scene.start('menu').remove();
   },
 
   extend: {
@@ -302,7 +435,6 @@ module.exports = {
     onLoadComplete: function (loader, totalComplete, totalFailed) {
       console.debug('complete', totalComplete);
       console.debug('failed', totalFailed);
-      this.progressBar.destroy();
     },
 
     onLoadProgress: function (progress) {
@@ -315,6 +447,10 @@ module.exports = {
         .fillRect(rect.x, rect.y, rect.width, rect.height)
         .fillStyle(color)
         .fillRect(rect.x, rect.y, progress * rect.width, rect.height);
+    },
+
+    shutdown: function () {
+      console.debug(this.scene.key, 'shutdown');
     }
 
   }
@@ -329,16 +465,15 @@ var GREEN = 0x00ff00;
 var RED = 0xff0000;
 var RND = Phaser.Math.RND;
 var SECOND = 1000;
-var SILVER = 0xcccccc;
 var YELLOW = 0xffff00;
 
 module.exports = {
 
-  key: 'default',
+  key: 'play',
+
+  plugins: ['Clock', 'DataManagerPlugin', 'InputPlugin', 'TweenManager'],
 
   init: function (data) {
-    console.debug(this.scene.key, 'init', data, this);
-
     this.level = data.level || 1;
     this.playerIsGlowing = false;
     this.playerIsSlimed = false;
@@ -369,13 +504,11 @@ module.exports = {
       .setScrollFactor(0, 0.5);
     this.mtn.tilePositionY = 4; // Avoid bleed at the top edge
 
-    var levelPrime = this.level % 10; // 0 to 10
     var platformsCount = 9;
     var slimesCount = Phaser.Math.Snap.Ceil(this.level / 4, 2); // 2 to 26, by 2
 
-    console.debug('levelPrime', levelPrime);
-    console.debug('platformsCount', platformsCount);
-    console.debug('slimesCount', slimesCount);
+    // console.debug('platformsCount', platformsCount);
+    // console.debug('slimesCount', slimesCount);
 
     this.createPlatforms(platformsCount);
     this.createPineapple();
@@ -398,12 +531,10 @@ module.exports = {
     this.cursors = this.input.keyboard.createCursorKeys();
 
     this.input.keyboard.once('keydown_Q', this.quit, this);
-
     this.input.keyboard.once('keydown_N', this.nextLevel, this);
-
     this.input.keyboard.once('keydown_R', this.restartLevel, this);
-    
     this.input.keyboard.once('keydown_L', this.lose, this);
+    this.input.keyboard.once('keydown_W', this.win, this);
 
     var debugGraphic = this.physics.world.debugGraphic;
 
@@ -416,18 +547,9 @@ module.exports = {
     if (!this.sys.game.device.browser.safari) {
       console.table(this.sys.displayList.list, ['name', 'x', 'y', 'visible']);
     }
-  
-    if (this.timeStarted > 1e9) {
-      console.warn('time.now is too large', this.time.now);
-      // this.time.update(0, 0);
-      // this.timeStarted = this.time.now;
-      // console.warn('time.now was reset', this.time.now);
-    }
   },
 
   update: function () {
-    console.assert(this.sys.settings.active === true, 'Scene is active');
-    console.assert(this.sys.settings.status === 5, 'Scene is running');
     this.updateBackground();
     this.updatePlayer();
     this.updateGlow();
@@ -440,8 +562,6 @@ module.exports = {
     cherry: null,
     cursors: null,
     eyesGroup: null,
-    gameOverText: null,
-    // gameOverTextGroup: null, // TODO
     gems: null,
     gemsTotal: 6,
     glow: null,
@@ -454,7 +574,6 @@ module.exports = {
     player: null,
     playerIsGlowing: null,
     playerIsSlimed: null,
-    quitText: null,
     score: null,
     scoreText: null,
     slimes: null,
@@ -534,8 +653,6 @@ module.exports = {
       Phaser.Geom.Rectangle.Random(this.physics.world.bounds, gem);
 
       gem
-        .setBounce(1, 1)
-        .setCollideWorldBounds(true)
         .setName('gem' + i)
         .setVelocity(120 * RND.sign(), 120 * RND.sign());
     },
@@ -543,7 +660,10 @@ module.exports = {
     createGems: function (count) {
       this.gems = this.physics.add.group({
         key: 'diamond',
-        repeat: count - 1
+        frameQuantity: count,
+        bounceX: 1,
+        bounceY: 1,
+        collideWorldBounds: true
       });
 
       this.gems.children.iterate(this.createGem, this);
@@ -610,7 +730,7 @@ module.exports = {
     createPlatforms: function (count) {
       this.platforms = this.physics.add.staticGroup({
         key: 'platform',
-        repeat: count - 1
+        frameQuantity: count
       });
 
       Phaser.Actions.GridAlign(this.platforms.getChildren(), {
@@ -618,7 +738,7 @@ module.exports = {
         height: 3,
         cellWidth: 600,
         cellHeight: -160, // bottom to top
-        position: 6, // Phaser.Display.Align.CENTER
+        position: Phaser.Display.Align.CENTER,
         x: 200,
         y: 425
       });
@@ -627,7 +747,7 @@ module.exports = {
         platform.x += 50 * ((i * this.level) % 16);
         platform.y += 32 * ((i * this.level) % 3);
         platform
-          .refreshBody() // Because we moved a static body after creation
+          .refreshBody()
           .setName('platform' + i)
           .setTint(BLUE);
       }, this);
@@ -651,8 +771,6 @@ module.exports = {
     createSlime: function (slime, eyes, i) {
       slime
         .setAlpha(0.75)
-        .setBounce(1, 0.2)
-        .setCollideWorldBounds(true)
         .setDataEnabled()
         .setData('eyes', eyes)
         .setData('i', i)
@@ -670,14 +788,17 @@ module.exports = {
     createSlimes: function (count) {
       this.slimes = this.physics.add.group({
         key: 'slime',
-        repeat: count - 1,
-        setXY: { x: 100, y: 0, stepX: 200 }
+        frameQuantity: count,
+        setXY: { x: 100, y: 0, stepX: 200 },
+        bounceX: 1,
+        bounceY: 0.2,
+        collideWorldBounds: true
       });
 
       this.eyesGroup = this.add.group({
         classType: Phaser.GameObjects.Image,
         key: 'slimeeyes',
-        repeat: count - 1
+        frameQuantity: count
       });
 
       var eyes = this.eyesGroup.getChildren();
@@ -698,19 +819,6 @@ module.exports = {
         .setName('scoreText')
         .setScrollFactor(0, 0);
 
-      this.gameOverText = this.add.bitmapText(400, 300, 'sunset')
-        .setName('gameOverText')
-        .setScrollFactor(0, 0)
-        .setVisible(false);
-
-      this.quitText = this.add.bitmapText(400, 450, 'smooth', '[N] Next\n[R] Restart\n[Q] Quit')
-        .setFontSize(32)
-        .setName('quitText')
-        .setOrigin(0.5, 0.5)
-        .setScrollFactor(0, 0)
-        .setTint(SILVER)
-        .setVisible(false);
-
       this.add.bitmapText(512, 0, 'smooth', 'Level ' + Phaser.Utils.String.Pad(this.level, 2, '0', 1))
         .setFontSize(32)
         .setName('levelText')
@@ -729,22 +837,21 @@ module.exports = {
       });
     },
 
-    gameOver: function (msg) {
-      this.gameOverText
-        .setText(msg)
-        .setOrigin(0.5) // must be after `setText`
-        .setVisible(true);
-
-      this.quitText.setVisible(true);
+    gameOver: function (eventName) {
+      console.debug('gameOver');
 
       this.scoreText.setActive(false);
       this.timerText.setActive(false);
 
-      this.input.once('pointerup', this.quit, this);
-    },
+      if (!this.scene.isActive('playOver') && !this.scene.isSleeping('playOver')) {
+        this.scene.launch('playOver');
+      }
 
-    hideGroup: function (group) {
-      Phaser.Actions.SetVisible(group.getChildren(), false);
+      this.events.emit('gameover');
+
+      if (eventName) {
+        this.events.emit(eventName);
+      }
     },
 
     isOnFloor: function (sprite) {
@@ -757,7 +864,7 @@ module.exports = {
     },
 
     lose: function () {
-      this.gameOver('SLIMED'); // :(
+      this.gameOver('lose');
     },
 
     nextLevel: function () {
@@ -765,19 +872,13 @@ module.exports = {
     },
 
     shutdown: function () {
-      console.debug(this.scene.key, 'shutdown');
-      console.trace();
-      console.assert(this.sys.settings.active === false, 'Scene is not active');
-      console.assert(this.sys.settings.status !== 5, 'Scene is not running');
-      this.scene.manager.dump();
       this.input.keyboard.removeAllListeners(); // TODO
     },
 
     quit: function () {
-      this.scene.start('menu');
-      console.assert(this.sys.settings.active === false, 'Scene is not active');
-      console.assert(this.sys.settings.status !== 5, 'Scene is not running');
-      this.scene.manager.dump();
+      console.debug('quit');
+      this.scene.switch('menu');
+      this.scene.stop();
     },
 
     restartLevel: function () {
@@ -785,29 +886,30 @@ module.exports = {
     },
 
     restartScene: function (data) {
-      this.scene.start(this.scene.key, data);
+      console.debug('restartScene', data);
+      this.scene.restart(data);
     },
 
     savePlayerProgress: function () {
       var elapsed = this.secondsElapsed();
       var registry = this.sys.game.registry;
 
-      console.debug('elapsed', elapsed);
+      // console.debug('elapsed', elapsed);
 
       registry.set('lastTime', elapsed);
       registry.set('levelCompleted', this.level);
 
       var bestTime = registry.get('bestTime');
 
-      console.debug('bestTime', bestTime);
+      // console.debug('bestTime', bestTime);
 
       if (elapsed < (bestTime || Infinity)) {
         registry.set('bestTime', elapsed);
       }
 
-      console.debug('bestTime', registry.get('bestTime'));
-      console.debug('lastTime', registry.get('lastTime'));
-      console.debug('levelCompleted', registry.get('levelCompleted'));
+      // console.debug('bestTime', registry.get('bestTime'));
+      // console.debug('lastTime', registry.get('lastTime'));
+      // console.debug('levelCompleted', registry.get('levelCompleted'));
     },
 
     secondsElapsed: function () {
@@ -831,16 +933,17 @@ module.exports = {
 
       player.anims.play('turn');
       player.body.allowDrag = true;
+      player.body.allowGravity = true;
 
       player
         .setAccelerationX(0)
         .setActive(false)
-        .setDrag(1200, 0)
+        .setDrag(1200, 60)
         .setTint(GREEN);
 
       slime
         .setAccelerationX(0)
-        .setDrag(1200, 0)
+        .setDrag(600, 0)
         .setGravityY(0);
 
       this.lose();
@@ -984,19 +1087,122 @@ module.exports = {
     win: function () {
       this.player.anims.play('turn');
       this.player.body.checkCollision.none = true;
-
       this.player
-        .setAccelerationX(Phaser.Math.Clamp((this.physics.world.bounds.centerX - this.player.x), -600, 600))
+        .setAccelerationX(this.player.body.velocity.x / 6)
         .setAccelerationY(-1200)
         .setCollideWorldBounds(false)
         .setDrag(600, 0);
 
       this.starsFlow.start();
-
       this.savePlayerProgress();
-
-      this.gameOver('HOORAY'); // :D
+      this.gameOver('win');
     }
+  }
+
+};
+
+});
+
+require.register("scenes/end.js", function(exports, require, module) {
+module.exports = {
+
+  key: 'playOver',
+
+  plugins: ['InputPlugin'],
+
+
+
+  init: function (data) {
+    // console.debug('init', this.scene.key);
+
+    if (this.scene.isActive()) {
+      throw new Error('Already active');
+    }
+
+    if (this.sys.updateList._list.length > 100) {
+      throw new Error('updateList too large');
+    }
+
+
+  },
+
+  create: function () {
+    if (this.sys.updateList._list.length > 100) {
+      throw new Error('updateList too large');
+    }
+
+    if (this.title) {
+      throw new Error('Already created');
+    }
+
+    this.cameras.main.setBackgroundColor(0x22000000);
+
+    this.title = this.add.bitmapText(400, 300, 'sunset', 'Hello')
+      .setName('title')
+      .setOrigin(0.5, 0.5)
+      .setScrollFactor(0, 0);
+
+    this.caption = this.add.bitmapText(400, 450, 'smooth', '[N] Next\n[R] Restart\n[Q] Quit')
+      .setFontSize(32)
+      .setName('caption')
+      .setOrigin(0.5, 0.5)
+      .setScrollFactor(0, 0)
+      .setTint(0xdddddd);
+
+    this.input.on('pointerdown', this.startPlay, this);
+  },
+
+  extend: {
+
+    addListeners: function () {
+      console.log('addListeners');
+
+      // this.events.on('sleep', this.onSleep, this);
+      // this.events.on('wake', this.onWake, this);
+      // this.events.once('shutdown', this.onShutdown, this);
+      this.events.once('shutdown', console.trace);
+
+      var playEvents = this.scene.get('play').events;
+
+      playEvents.on('win', this.onWin, this);
+      playEvents.on('lose', this.onLose, this);
+      playEvents.on('gameover', this.wake, this);
+      playEvents.on('shutdown', this.sleep, this);
+
+      delete this.addListeners;
+    },
+
+    onWin: function () {
+      this.title.setText('HOORAY');
+    },
+
+    onLose: function () {
+      this.title.setText('OH NO');
+    },
+
+    onShutdown: function () {
+      console.warn('Should not shutdown');
+    },
+
+    startPlay: function () {
+      console.warn('startPlay');
+      // debugger;
+      this.scene.stop('play').launch('play');
+    },
+
+    sleep: function () {
+      console.warn('sleep?');
+      if (this.scene.isActive()) {
+        console.warn('sleep!');
+        this.scene.sleep();
+      }
+    },
+
+    wake: function () {
+      console.warn('wake!');
+      this.scene.wake();
+    }
+
   }
 
 };
@@ -1008,12 +1214,12 @@ module.exports = {
 
   key: 'menu',
 
+  plugins: ['DataManagerPlugin', 'InputPlugin'],
+
   init: function () {
-    var registry = this.sys.game.registry;
+    // console.debug('init', this.scene.key);
 
-    this.level = 1 + (registry.get('levelCompleted') || 0);
-
-    this.events.once('shutdown', this.onShutdown, this);
+    this.events.once('shutdown', this.shutdown, this);
   },
 
   create: function () {
@@ -1030,9 +1236,9 @@ module.exports = {
       .setOrigin(0.125, 0.125)
       .setFontSize(16);
 
-    this.input.once('pointerup', this.start, this);
+    this.input.on('pointerdown', this.startPlay, this);
 
-    this.input.keyboard.once('keydown_S', this.start, this);
+    this.input.keyboard.on('keydown_S', this.startPlay, this);
   },
 
   extend: {
@@ -1043,18 +1249,23 @@ module.exports = {
       var registry = this.sys.game.registry;
 
       return Phaser.Utils.String.Format('Level: %1  Last Time: %2  Best Time: %3', [
-        this.level,
+        this.getNextLevel(),
         registry.get('lastTime') || '-',
         registry.get('bestTime') || '-'
       ]);
     },
 
-    onShutdown: function () {
-      this.input.keyboard.removeAllListeners();
+    getNextLevel: function () {
+      return 1 + (this.sys.game.registry.get('levelCompleted') || 0);
     },
 
-    start: function () {
-      this.scene.start('default', { level: this.level });
+    shutdown: function () {
+      // this.input.keyboard.removeAllListeners();
+    },
+
+    startPlay: function () {
+      console.log('startPlay');
+      this.scene.switch('play');
     }
 
   }
@@ -1068,3 +1279,4 @@ require.register("___globals___", function(exports, require, module) {
 });})();require('___globals___');
 
 require('initialize');
+//# sourceMappingURL=app.js.map

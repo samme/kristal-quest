@@ -167,31 +167,18 @@ window.game = new Phaser.Game({
 
   width: 800,
   height: 600,
-  type: Phaser.AUTO,
+  // type: Phaser.CANVAS,
   title: '💎 Kristal Quest',
   url: 'https://github.com/samme/kristal-quest',
-  version: '0.0.8',
+  version: '0.0.9',
   audio: { noAudio: true },
   banner: {
     background: ['#eb4149', '#ebba16', '#42af5c', '#2682b1', '#28434d']
   },
-  // pixelArt: true,
+  pixelArt: true,
   clearBeforeRender: false,
   loader: {
     path: 'assets/'
-  },
-  physics: {
-    default: 'arcade',
-    arcade: {
-      debug: true,
-      gravity: {
-        y: 600
-      },
-      height: 775,
-      width: 1600,
-      x: 0,
-      y: -200
-    }
   },
   callbacks: {
     postBoot: function (game) {
@@ -217,10 +204,10 @@ module.exports = {
 
   key: 'boot',
 
-  plugins: ['DataManagerPlugin', 'Loader'],
+  plugins: ['Loader'],
 
   init: function () {
-    this.sys.game.registry.set('levelCompleted', 0);
+    this.registry.set('levelCompleted', 0);
   },
 
   preload: function () {
@@ -253,7 +240,7 @@ module.exports = {
 
   create: function () {
     this.createAnims();
-    this.scene.get('playOver').addListeners();
+    this.scene.run('playOver').sleep('playOver');
     this.scene.start('menu').remove();
   },
 
@@ -316,7 +303,7 @@ module.exports = {
 });
 
 require.register("scenes/default.js", function(exports, require, module) {
-var RND = Phaser.Math.RND;
+var RND;
 var SECOND = 1000;
 
 var colors = require('data/colors');
@@ -325,9 +312,25 @@ module.exports = {
 
   key: 'play',
 
-  plugins: ['Clock', 'DataManagerPlugin', 'InputPlugin', 'TweenManager'],
+  plugins: ['Clock', 'InputPlugin', 'TweenManager'],
+
+  physics: {
+    default: 'arcade',
+    arcade: {
+      debug: true,
+      gravity: {
+        y: 600
+      },
+      height: 775,
+      width: 1600,
+      x: 0,
+      y: -200
+    }
+  },
 
   init: function (data) {
+    RND = Phaser.Math.RND;
+
     this.level = data.level || 1;
     this.playerIsGlowing = false;
     this.playerIsSlimed = false;
@@ -340,8 +343,6 @@ module.exports = {
       this.timeStarted = this.time.now;
       console.warn('time.now was reset', this.time.now);
     }
-
-    this.events.once('shutdown', this.shutdown, this);
   },
 
   create: function () {
@@ -384,18 +385,18 @@ module.exports = {
 
     this.cursors = this.input.keyboard.createCursorKeys();
 
-    this.input.keyboard.once('keydown_Q', this.quit, this);
-    this.input.keyboard.once('keydown_N', this.nextLevel, this);
-    this.input.keyboard.once('keydown_R', this.restartLevel, this);
-    this.input.keyboard.once('keydown_L', this.lose, this);
-    this.input.keyboard.once('keydown_W', this.win, this);
+    this.input.keyboard.once('keydown-Q', this.quit, this);
+    this.input.keyboard.once('keydown-N', this.nextLevel, this);
+    this.input.keyboard.once('keydown-R', this.restartLevel, this);
+    this.input.keyboard.once('keydown-L', this.lose, this);
+    this.input.keyboard.once('keydown-W', this.win, this);
 
     var debugGraphic = this.physics.world.debugGraphic;
 
     if (debugGraphic) {
       // Seems to be lost after state restart
       debugGraphic.setVisible(false);
-      this.input.keyboard.on('keydown_D', this.toggleDebugGraphic, this);
+      this.input.keyboard.on('keydown-D', this.toggleDebugGraphic, this);
     }
 
     if (!this.sys.game.device.browser.safari) {
@@ -417,7 +418,7 @@ module.exports = {
     cursors: null,
     eyesGroup: null,
     gems: null,
-    gemsTotal: 6,
+    gemsTotal: 4,
     glow: null,
     glowTween: null,
     level: null,
@@ -597,13 +598,21 @@ module.exports = {
         y: 425
       });
 
+      var color = new Phaser.Display.Color()
+        // .setFromHSV(1 / 6 * (this.level % 6), 0.5, 0.5);
+        .setFromHSV(
+          0.333 * (this.level % 3),
+          0.5,
+          0.5
+        );
+
       this.platforms.children.iterate(function (platform, i) {
         platform.x += 50 * ((i * this.level) % 16);
         platform.y += 32 * ((i * this.level) % 3);
         platform
           .refreshBody()
           .setName('platform' + i)
-          .setTint(colors.BLUE);
+          .setTint(color.color);
       }, this);
     },
 
@@ -692,8 +701,6 @@ module.exports = {
     },
 
     gameOver: function (eventName) {
-      console.debug('gameOver');
-
       this.scoreText.setActive(false);
       this.timerText.setActive(false);
 
@@ -709,7 +716,7 @@ module.exports = {
     },
 
     isOnFloor: function (sprite) {
-      return sprite.body.blocked.down || sprite.body.touching.down;
+      return sprite.body.blocked.down;
     },
 
     // Filter for some of the physics colliders
@@ -725,17 +732,13 @@ module.exports = {
       this.restartScene({ level: 1 + this.level });
     },
 
-    shutdown: function () {
-      this.input.keyboard.removeAllListeners(); // TODO
-    },
-
     quit: function () {
-      console.debug('quit');
       this.scene.switch('menu');
       this.scene.stop();
     },
 
     restartLevel: function () {
+      console.debug('restartLevel', this.level);
       this.restartScene({ level: this.level });
     },
 
@@ -746,25 +749,23 @@ module.exports = {
 
     savePlayerProgress: function () {
       var elapsed = this.secondsElapsed();
-      var registry = this.sys.game.registry;
+      var registry = this.registry;
 
-      // console.debug('elapsed', elapsed);
 
       registry.set('lastTime', elapsed);
       registry.set('levelCompleted', this.level);
 
       var bestTime = registry.get('bestTime');
 
-      // console.debug('bestTime', bestTime);
-
       if (elapsed < (bestTime || Infinity)) {
         registry.set('bestTime', elapsed);
       }
 
-      // console.debug('bestTime', registry.get('bestTime'));
-      // console.debug('lastTime', registry.get('lastTime'));
-      // console.debug('levelCompleted', registry.get('levelCompleted'));
-    },
+      console.debug('elapsed', elapsed);
+      console.debug('bestTime', registry.get('bestTime'));
+      console.debug('lastTime', registry.get('lastTime'));
+      console.debug('levelCompleted', registry.get('levelCompleted'));
+   },
 
     secondsElapsed: function () {
       return Math.floor((this.time.now - this.timeStarted) / SECOND);
@@ -964,27 +965,7 @@ module.exports = {
 
   plugins: ['InputPlugin'],
 
-
-
-  init: function (data) {
-    // console.debug('init', this.scene.key);
-
-    if (this.scene.isActive()) {
-      throw new Error('Already active');
-    }
-
-    if (this.sys.updateList._list.length > 100) {
-      throw new Error('updateList too large');
-    }
-
-
-  },
-
   create: function () {
-    if (this.sys.updateList._list.length > 100) {
-      throw new Error('updateList too large');
-    }
-
     if (this.title) {
       throw new Error('Already created');
     }
@@ -1004,17 +985,14 @@ module.exports = {
       .setTint(0xdddddd);
 
     this.input.on('pointerdown', this.startPlay, this);
+
+    this.addListeners();
   },
 
   extend: {
 
     addListeners: function () {
-      console.log('addListeners');
-
-      // this.events.on('sleep', this.onSleep, this);
-      // this.events.on('wake', this.onWake, this);
-      // this.events.once('shutdown', this.onShutdown, this);
-      this.events.once('shutdown', console.trace);
+      console.debug('addListeners');
 
       var playEvents = this.scene.get('play').events;
 
@@ -1034,26 +1012,18 @@ module.exports = {
       this.title.setText('OH NO');
     },
 
-    onShutdown: function () {
-      console.warn('Should not shutdown');
-    },
-
     startPlay: function () {
-      console.warn('startPlay');
-      // debugger;
-      this.scene.stop('play').launch('play');
+      // this.scene.stop('play').launch('play');
+      this.scene.launch('play');
     },
 
     sleep: function () {
-      console.warn('sleep?');
       if (this.scene.isActive()) {
-        console.warn('sleep!');
         this.scene.sleep();
       }
     },
 
     wake: function () {
-      console.warn('wake!');
       this.scene.wake();
     }
 
@@ -1068,13 +1038,7 @@ module.exports = {
 
   key: 'menu',
 
-  plugins: ['DataManagerPlugin', 'InputPlugin'],
-
-  init: function () {
-    // console.debug('init', this.scene.key);
-
-    this.events.once('shutdown', this.shutdown, this);
-  },
+  plugins: ['InputPlugin'],
 
   create: function () {
     this.add.image(400, 300, 'space2');
@@ -1092,7 +1056,7 @@ module.exports = {
 
     this.input.on('pointerdown', this.startPlay, this);
 
-    this.input.keyboard.on('keydown_S', this.startPlay, this);
+    this.input.keyboard.on('keydown-S', this.startPlay, this);
   },
 
   extend: {
@@ -1100,7 +1064,7 @@ module.exports = {
     level: null,
 
     captionText: function () {
-      var registry = this.sys.game.registry;
+      var registry = this.registry;
 
       return Phaser.Utils.String.Format('Level: %1  Last Time: %2  Best Time: %3', [
         this.getNextLevel(),
@@ -1110,15 +1074,10 @@ module.exports = {
     },
 
     getNextLevel: function () {
-      return 1 + (this.sys.game.registry.get('levelCompleted') || 0);
-    },
-
-    shutdown: function () {
-      // this.input.keyboard.removeAllListeners();
+      return 1 + (this.registry.get('levelCompleted') || 0);
     },
 
     startPlay: function () {
-      console.log('startPlay');
       this.scene.switch('play');
     }
 
@@ -1133,4 +1092,3 @@ require.register("___globals___", function(exports, require, module) {
 });})();require('___globals___');
 
 require('initialize');
-//# sourceMappingURL=app.js.map
